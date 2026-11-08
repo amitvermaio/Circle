@@ -20,4 +20,9 @@ export const chatMessagePayloadSchema = z.object({
   timestamp: z.string().datetime(),
 });
 
+export const messageHistoryQuerySchema = z.object({
+  cursor: z.string().datetime("Cursor must be an ISO timestamp").optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(30),
+});
+
 export type ChatMessagePayload = z.infer<typeof chatMessagePayloadSchema>;
