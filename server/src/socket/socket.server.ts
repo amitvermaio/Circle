@@ -25,6 +25,10 @@ const chatReceiptsChannel = "chat:receipts";
 const chatTypingChannel = "chat:typing";
 // This throttle is intentionally in-memory per server instance; Redis fan-out does not share throttle state.
 const lastTypingAtByUserAndRoom = new Map<string, number>();
+// This socket-event limiter is intentionally in-memory per server instance and is not shared across nodes.
+const socketEventWindows = new Map<string, { startedAt: number; count: number }>();
+const socketEventWindowMs = 10_000;
+const socketEventLimit = 30;
 
 interface ClientToServerEvents {
   join_room: (payload: unknown) => void;
@@ -76,6 +80,10 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
 
   io.on("connection", (socket) => {
     socket.on("join_room", async (payload) => {
+      if (!isSocketEventAllowed(socket.id, "join_room")) {
+        return;
+      }
+
       const validation = joinRoomSchema.safeParse(payload);
 
       if (!validation.success) {
@@ -95,6 +103,10 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
     });
 
     socket.on("send_message", async (payload) => {
+      if (!isSocketEventAllowed(socket.id, "send_message")) {
+        return;
+      }
+
       const joinedRoom = typeof payload === "object" && payload !== null && "roomId" in payload ? payload.roomId : undefined;
 
       if (typeof joinedRoom !== "string" || !socket.rooms.has(joinedRoom)) {
@@ -125,6 +137,10 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
     });
 
     socket.on("message_read", async (payload) => {
+      if (!isSocketEventAllowed(socket.id, "message_read")) {
+        return;
+      }
+
       const validation = messageReadSchema.safeParse(payload);
 
       if (!validation.success) {
@@ -165,6 +181,10 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
     });
 
     socket.on("typing", async (payload) => {
+      if (!isSocketEventAllowed(socket.id, "typing")) {
+        return;
+      }
+
       const validation = typingSchema.safeParse(payload);
 
       if (!validation.success) {
@@ -197,6 +217,12 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
       };
 
       await redisPublisher.publish(chatTypingChannel, JSON.stringify(typingPayload));
+    });
+
+    socket.on("disconnect", () => {
+      for (const eventName of ["join_room", "send_message", "message_read", "typing"]) {
+        socketEventWindows.delete(`${socket.id}:${eventName}`);
+      }
     });
   });
 
@@ -260,4 +286,22 @@ async function emitTypingToRoom(
       socket.emit("typing", payload);
     }
   }
+}
+
+function isSocketEventAllowed(socketId: string, eventName: string): boolean {
+  const key = `${socketId}:${eventName}`;
+  const now = Date.now();
+  const currentWindow = socketEventWindows.get(key);
+
+  if (!currentWindow || now - currentWindow.startedAt >= socketEventWindowMs) {
+    socketEventWindows.set(key, { startedAt: now, count: 1 });
+    return true;
+  }
+
+  if (currentWindow.count >= socketEventLimit) {
+    return false;
+  }
+
+  currentWindow.count += 1;
+  return true;
 }
