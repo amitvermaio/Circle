@@ -10,26 +10,32 @@ import { RoomModel } from "../models/room.model";
 import {
   chatMessagePayloadSchema,
   joinRoomSchema,
+  messageReadSchema,
+  receiptPayloadSchema,
   sendMessageSchema,
   typingPayloadSchema,
   typingSchema,
   type ChatMessagePayload,
+  type ReceiptPayload,
   type TypingPayload,
 } from "../validations/message.validation";
 
 const chatMessagesChannel = "chat:messages";
+const chatReceiptsChannel = "chat:receipts";
 const chatTypingChannel = "chat:typing";
 // This throttle is intentionally in-memory per server instance; Redis fan-out does not share throttle state.
 const lastTypingAtByUserAndRoom = new Map<string, number>();
 
 interface ClientToServerEvents {
   join_room: (payload: unknown) => void;
+  message_read: (payload: unknown) => void;
   send_message: (payload: unknown) => void;
   typing: (payload: unknown) => void;
 }
 
 interface ServerToClientEvents {
   new_message: (payload: ChatMessagePayload) => void;
+  message_read: (payload: ReceiptPayload) => void;
   typing: (payload: TypingPayload) => void;
 }
 
@@ -118,6 +124,46 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
       await redisPublisher.publish(chatMessagesChannel, JSON.stringify(messagePayload));
     });
 
+    socket.on("message_read", async (payload) => {
+      const validation = messageReadSchema.safeParse(payload);
+
+      if (!validation.success) {
+        return;
+      }
+
+      const room = await RoomModel.exists({
+        roomId: validation.data.roomId,
+        participants: socket.data.userId,
+      });
+
+      if (!room) {
+        return;
+      }
+
+      const message = await MessageModel.findOneAndUpdate(
+        {
+          roomId: validation.data.roomId,
+          messageId: validation.data.messageId,
+          senderId: { $ne: socket.data.userId },
+        },
+        { $addToSet: { deliveredTo: socket.data.userId, readBy: socket.data.userId } },
+        { new: true },
+      );
+
+      if (!message) {
+        return;
+      }
+
+      const receiptPayload: ReceiptPayload = {
+        event: "message_read",
+        roomId: message.roomId,
+        messageId: message.messageId,
+        readerId: socket.data.userId,
+      };
+
+      await redisPublisher.publish(chatReceiptsChannel, JSON.stringify(receiptPayload));
+    });
+
     socket.on("typing", async (payload) => {
       const validation = typingSchema.safeParse(payload);
 
@@ -168,6 +214,19 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
       return;
     }
 
+    if (channel === chatReceiptsChannel) {
+      try {
+        const payload = receiptPayloadSchema.safeParse(JSON.parse(rawMessage) as unknown);
+
+        if (payload.success) {
+          io.to(payload.data.roomId).emit("message_read", payload.data);
+        }
+      } catch {
+        // Ignore malformed JSON from Redis; only validated receipts are broadcast.
+      }
+      return;
+    }
+
     if (channel !== chatTypingChannel) {
       return;
     }
@@ -183,7 +242,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
     }
   });
 
-  void redisSubscriber.subscribe(chatMessagesChannel, chatTypingChannel).catch((error: unknown) => {
+  void redisSubscriber.subscribe(chatMessagesChannel, chatReceiptsChannel, chatTypingChannel).catch((error: unknown) => {
     console.error("Failed to subscribe to chat messages", error);
   });
 

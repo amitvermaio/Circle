@@ -6,6 +6,8 @@ export interface Message {
   senderId: string;
   text: string;
   timestamp: Date;
+  deliveredTo: string[];
+  readBy: string[];
 }
 
 const messageSchema = new Schema<Message>(
@@ -20,6 +22,9 @@ const messageSchema = new Schema<Message>(
     senderId: { type: String, required: true },
     text: { type: String, required: true, trim: true, maxlength: 2000 },
     timestamp: { type: Date, required: true, default: Date.now, immutable: true },
+    // Per-recipient arrays support atomic $addToSet updates without trusting client status values.
+    deliveredTo: { type: [String], required: true, default: [] },
+    readBy: { type: [String], required: true, default: [] },
   },
   { timestamps: true },
 );

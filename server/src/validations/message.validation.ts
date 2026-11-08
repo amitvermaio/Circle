@@ -15,10 +15,17 @@ export const typingSchema = z.object({
   roomId: roomIdSchema,
 });
 
+const messageIdSchema = z.string().regex(/^[a-f\d]{24}$/i, "Message ID must be valid");
+
+export const messageReadSchema = z.object({
+  roomId: roomIdSchema,
+  messageId: messageIdSchema,
+});
+
 export const chatMessagePayloadSchema = z.object({
   event: z.literal("new_message"),
   roomId: roomIdSchema,
-  messageId: z.string().regex(/^[a-f\d]{24}$/i, "Message ID must be valid"),
+  messageId: messageIdSchema,
   senderId: z.string().regex(/^[a-f\d]{24}$/i, "Sender ID must be valid"),
   text: z.string().trim().min(1).max(2000),
   timestamp: z.string().datetime(),
@@ -35,5 +42,13 @@ export const typingPayloadSchema = z.object({
   senderId: z.string().regex(/^[a-f\d]{24}$/i, "Sender ID must be valid"),
 });
 
+export const receiptPayloadSchema = z.object({
+  event: z.literal("message_read"),
+  roomId: roomIdSchema,
+  messageId: messageIdSchema,
+  readerId: z.string().regex(/^[a-f\d]{24}$/i, "Reader ID must be valid"),
+});
+
 export type ChatMessagePayload = z.infer<typeof chatMessagePayloadSchema>;
 export type TypingPayload = z.infer<typeof typingPayloadSchema>;
+export type ReceiptPayload = z.infer<typeof receiptPayloadSchema>;
