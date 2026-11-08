@@ -6,6 +6,7 @@ export interface User {
   username: string;
   email: string;
   passwordHash: string;
+  tokenVersion: number;
 }
 
 const userSchema = new Schema<User>(
@@ -20,6 +21,7 @@ const userSchema = new Schema<User>(
     username: { type: String, required: true, trim: true, lowercase: true, unique: true },
     email: { type: String, required: true, trim: true, lowercase: true, unique: true },
     passwordHash: { type: String, required: true, select: false },
+    tokenVersion: { type: Number, required: true, default: 0 },
   },
   { timestamps: true },
 );

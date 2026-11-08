@@ -6,7 +6,7 @@ import { config } from "../config/config";
 import { PendingRegistrationModel } from "../models/pendingRegistration.model";
 import { UserModel, type UserDocument } from "../models/user.model";
 import { generateOtp, hashOtp, sendRegistrationOtp, verifyOtp } from "../services/otp.service";
-import { loginSchema, registerSchema, verifyRegistrationOtpSchema } from "../validations/auth.validation";
+import { changePasswordSchema, loginSchema, registerSchema, verifyRegistrationOtpSchema } from "../validations/auth.validation";
 
 interface HttpError extends Error {
   code: string;
@@ -18,7 +18,7 @@ function createHttpError(statusCode: number, code: string, message: string): Htt
 }
 
 function createToken(user: UserDocument): string {
-  return jwt.sign({ userId: user.userId }, config.JWT_SECRET, { expiresIn: "1d" });
+  return jwt.sign({ userId: user.userId, tokenVersion: user.tokenVersion }, config.JWT_SECRET, { expiresIn: "1d" });
 }
 
 export async function register(request: Request, response: Response, next: NextFunction): Promise<void> {
@@ -136,6 +136,55 @@ export async function login(request: Request, response: Response, next: NextFunc
     if (!user || !(await bcrypt.compare(validation.data.password, user.passwordHash))) {
       throw createHttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
     }
+
+    response.status(200).json({
+      success: true,
+      data: { user: user.toJSON(), token: createToken(user) },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function logout(request: Request, response: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = await UserModel.findOneAndUpdate(
+      { userId: request.user!.userId },
+      { $inc: { tokenVersion: 1 } },
+      { new: true },
+    );
+
+    if (!user) {
+      throw createHttpError(401, "UNAUTHORIZED", "Invalid authentication token");
+    }
+
+    response.status(200).json({ success: true, data: { message: "Logged out successfully" } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function changePassword(request: Request, response: Response, next: NextFunction): Promise<void> {
+  const validation = changePasswordSchema.safeParse(request.body);
+
+  if (!validation.success) {
+    response.status(400).json({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "Invalid password data", details: validation.error.flatten() },
+    });
+    return;
+  }
+
+  try {
+    const user = await UserModel.findOne({ userId: request.user!.userId }).select("+passwordHash");
+
+    if (!user || !(await bcrypt.compare(validation.data.currentPassword, user.passwordHash))) {
+      throw createHttpError(401, "INVALID_CREDENTIALS", "Current password is incorrect");
+    }
+
+    user.passwordHash = await bcrypt.hash(validation.data.newPassword, 12);
+    user.tokenVersion += 1;
+    await user.save();
 
     response.status(200).json({
       success: true,
