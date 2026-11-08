@@ -11,6 +11,10 @@ export const sendMessageSchema = z.object({
   text: z.string().trim().min(1, "Message text is required").max(2000, "Message text must be at most 2000 characters"),
 });
 
+export const typingSchema = z.object({
+  roomId: roomIdSchema,
+});
+
 export const chatMessagePayloadSchema = z.object({
   event: z.literal("new_message"),
   roomId: roomIdSchema,
@@ -25,4 +29,11 @@ export const messageHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(30),
 });
 
+export const typingPayloadSchema = z.object({
+  event: z.literal("typing"),
+  roomId: roomIdSchema,
+  senderId: z.string().regex(/^[a-f\d]{24}$/i, "Sender ID must be valid"),
+});
+
 export type ChatMessagePayload = z.infer<typeof chatMessagePayloadSchema>;
+export type TypingPayload = z.infer<typeof typingPayloadSchema>;
