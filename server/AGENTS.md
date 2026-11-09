@@ -84,3 +84,8 @@ These rules apply only to work under `server/`.
   { success: false, error: { code: string, message: string, details?: unknown } }
   ```
 - **Planned:** Return appropriate HTTP status codes and never expose internal stack traces, secrets, password hashes, or raw database errors.
+
+## Out of scope
+
+- Online and last-seen status.
+- Per-user settings, mute, and archive preferences.

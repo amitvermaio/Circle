@@ -71,12 +71,9 @@ Don't treat these as existing code. Work on them in the order listed unless the 
 - Star and pin messages.
 - Media and file sharing (images, video, documents, voice notes).
 - Message search within a chat.
-- Online and last-seen status, with privacy controls.
 
 **4. Other pages**
 - Stories: post, view, and expire after 24 hours.
-- Settings: account, privacy, notifications, and chat preferences.
-- Mute and archive chats.
 
 **5. Security**
 - Rate limiting on OTP requests, login, and socket events.
@@ -88,6 +85,8 @@ Don't treat these as existing code. Work on them in the order listed unless the 
 Don't build these, and don't create any files or routes for them.
 - Voice and video calls.
 - Channels and broadcast lists.
+- Online and last-seen status.
+- Per-user settings, mute, and archive preferences.
 
 ## Git workflow
 - After every completed task, run `pnpm tsc --noEmit` in `server/`. Commit only if it passes.
