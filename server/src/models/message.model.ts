@@ -1,5 +1,14 @@
 import { Schema, model, models, Types } from "mongoose";
 
+import { allowedMediaTypes, type AllowedMediaType } from "../config/imagekit";
+
+interface MediaAttachment {
+  fileId: string;
+  url: string;
+  type: AllowedMediaType;
+  size: number;
+}
+
 export interface Message {
   messageId: string;
   roomId: string;
@@ -14,10 +23,21 @@ export interface Message {
     messageId: string;
     senderId: string;
   };
+  media: MediaAttachment[];
   reactions: Map<string, string[]>;
   deliveredTo: string[];
   readBy: string[];
 }
+
+const mediaAttachmentSchema = new Schema<MediaAttachment>(
+  {
+    fileId: { type: String, required: true },
+    url: { type: String, required: true },
+    type: { type: String, required: true, enum: allowedMediaTypes },
+    size: { type: Number, required: true, min: 1 },
+  },
+  { _id: false },
+);
 
 const messageSchema = new Schema<Message>(
   {
@@ -29,7 +49,7 @@ const messageSchema = new Schema<Message>(
     },
     roomId: { type: String, required: true },
     senderId: { type: String, required: true },
-    text: { type: String, required: true, trim: true, maxlength: 2000 },
+    text: { type: String, default: "", trim: true, maxlength: 2000 },
     timestamp: { type: Date, required: true, default: Date.now, immutable: true },
     editedAt: { type: Date },
     deletedFor: { type: [String], required: true, default: [] },
@@ -39,6 +59,7 @@ const messageSchema = new Schema<Message>(
       messageId: { type: String, required: true },
       senderId: { type: String, required: true },
     },
+    media: { type: [mediaAttachmentSchema], required: true, default: [] },
     reactions: { type: Map, of: [String], required: true, default: {} },
     // Per-recipient arrays support atomic $addToSet updates without trusting client status values.
     deliveredTo: { type: [String], required: true, default: [] },
@@ -57,6 +78,12 @@ messageSchema.set("toJSON", {
 
     if (sanitizedMessage.deletedForEveryone === true) {
       delete sanitizedMessage.text;
+    }
+
+    if (Array.isArray(sanitizedMessage.media)) {
+      for (const attachment of sanitizedMessage.media) {
+        delete (attachment as Record<string, unknown>).fileId;
+      }
     }
 
     return returnedMessage;

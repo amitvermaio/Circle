@@ -7,6 +7,8 @@ import { config } from "../config/config";
 import { redisPublisher, redisSubscriber } from "../config/redis";
 import { MessageModel } from "../models/message.model";
 import { RoomModel } from "../models/room.model";
+import { verifyMediaAttachments } from "../services/media.service";
+import type { MediaPayload } from "../validations/media.validation";
 import { roomMembershipPayloadSchema, type RoomMembershipPayload } from "../validations/room.validation";
 import {
   chatMessagePayloadSchema,
@@ -145,11 +147,18 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
         }
       }
 
+      const media = await verifyMediaAttachments(socket.data.userId, validation.data.media);
+
+      if (!media) {
+        return;
+      }
+
       const message = await MessageModel.create({
         roomId: validation.data.roomId,
         senderId: socket.data.userId,
         text: validation.data.text,
         replyTo: validation.data.replyTo,
+        media,
       });
       const messagePayload: ChatMessagePayload = {
         event: "new_message",
@@ -159,6 +168,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
         text: message.text,
         timestamp: message.timestamp.toISOString(),
         replyTo: message.replyTo,
+        media: toMediaPayload(message.media),
       };
 
       await redisPublisher.publish(chatMessagesChannel, JSON.stringify(messagePayload));
@@ -202,6 +212,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
         senderId: socket.data.userId,
         text: sourceMessage.text,
         forwardedFrom,
+        media: sourceMessage.media,
       });
       const messagePayload: ChatMessagePayload = {
         event: "new_message",
@@ -211,6 +222,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
         text: message.text,
         timestamp: message.timestamp.toISOString(),
         forwardedFrom: message.forwardedFrom,
+        media: toMediaPayload(message.media),
       };
 
       await redisPublisher.publish(chatMessagesChannel, JSON.stringify(messagePayload));
@@ -452,6 +464,10 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
 
 function getUserSocketRoom(userId: string): string {
   return `user:${userId}`;
+}
+
+function toMediaPayload(media: Iterable<{ url: string; type: string; size: number }>): MediaPayload[] {
+  return Array.from(media, ({ url, type, size }) => ({ url, type, size })) as MediaPayload[];
 }
 
 async function emitTypingToRoom(

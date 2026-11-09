@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { mediaAttachmentSchema, mediaPayloadSchema } from "./media.validation";
+
 const roomIdSchema = z.string().regex(/^[a-f\d]{24}$/i, "Room ID must be valid");
 
 export const joinRoomSchema = z.object({
@@ -16,8 +18,11 @@ const emojiSchema = z.enum(["👍", "❤️", "😂", "😮", "😢", "🙏"]);
 
 export const sendMessageSchema = z.object({
   roomId: roomIdSchema,
-  text: z.string().trim().min(1, "Message text is required").max(2000, "Message text must be at most 2000 characters"),
+  text: z.string().trim().max(2000, "Message text must be at most 2000 characters").default(""),
   replyTo: messageIdSchema.optional(),
+  media: z.array(mediaAttachmentSchema).max(10, "A message can contain at most 10 attachments").default([]),
+}).refine(({ text, media }) => text.length > 0 || media.length > 0, {
+  message: "Message text or media is required",
 });
 
 export const forwardMessageSchema = z.object({
@@ -54,9 +59,10 @@ export const chatMessagePayloadSchema = z.object({
   roomId: roomIdSchema,
   messageId: messageIdSchema,
   senderId: userIdSchema,
-  text: z.string().trim().min(1).max(2000),
+  text: z.string().trim().max(2000),
   timestamp: z.string().datetime(),
   replyTo: messageIdSchema.optional(),
+  media: z.array(mediaPayloadSchema).default([]),
   forwardedFrom: z.object({
     messageId: messageIdSchema,
     senderId: userIdSchema,
