@@ -6,6 +6,9 @@ export interface Message {
   senderId: string;
   text: string;
   timestamp: Date;
+  editedAt?: Date;
+  deletedFor: string[];
+  deletedForEveryone: boolean;
   deliveredTo: string[];
   readBy: string[];
 }
@@ -22,6 +25,9 @@ const messageSchema = new Schema<Message>(
     senderId: { type: String, required: true },
     text: { type: String, required: true, trim: true, maxlength: 2000 },
     timestamp: { type: Date, required: true, default: Date.now, immutable: true },
+    editedAt: { type: Date },
+    deletedFor: { type: [String], required: true, default: [] },
+    deletedForEveryone: { type: Boolean, required: true, default: false },
     // Per-recipient arrays support atomic $addToSet updates without trusting client status values.
     deliveredTo: { type: [String], required: true, default: [] },
     readBy: { type: [String], required: true, default: [] },
@@ -30,5 +36,18 @@ const messageSchema = new Schema<Message>(
 );
 
 messageSchema.index({ roomId: 1, timestamp: -1 });
+
+messageSchema.set("toJSON", {
+  transform: (_document, returnedMessage) => {
+    const sanitizedMessage = returnedMessage as unknown as Record<string, unknown>;
+    delete sanitizedMessage.__v;
+
+    if (sanitizedMessage.deletedForEveryone === true) {
+      delete sanitizedMessage.text;
+    }
+
+    return returnedMessage;
+  },
+});
 
 export const MessageModel = models.Message || model<Message>("Message", messageSchema);

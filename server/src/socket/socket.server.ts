@@ -12,11 +12,13 @@ import {
   chatMessagePayloadSchema,
   joinRoomSchema,
   messageReadSchema,
+  messageUpdatedPayloadSchema,
   receiptPayloadSchema,
   sendMessageSchema,
   typingPayloadSchema,
   typingSchema,
   type ChatMessagePayload,
+  type MessageUpdatedPayload,
   type ReceiptPayload,
   type TypingPayload,
 } from "../validations/message.validation";
@@ -42,6 +44,7 @@ interface ClientToServerEvents {
 interface ServerToClientEvents {
   update_membership: (payload: RoomMembershipPayload) => void;
   new_message: (payload: ChatMessagePayload) => void;
+  message_updated: (payload: MessageUpdatedPayload) => void;
   message_read: (payload: ReceiptPayload) => void;
   typing: (payload: TypingPayload) => void;
 }
@@ -234,10 +237,18 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
   redisSubscriber.on("message", (channel, rawMessage) => {
     if (channel === chatMessagesChannel) {
       try {
-        const payload = chatMessagePayloadSchema.safeParse(JSON.parse(rawMessage) as unknown);
+        const rawPayload = JSON.parse(rawMessage) as unknown;
+        const messagePayload = chatMessagePayloadSchema.safeParse(rawPayload);
 
-        if (payload.success) {
-          io.to(payload.data.roomId).emit("new_message", payload.data);
+        if (messagePayload.success) {
+          io.to(messagePayload.data.roomId).emit("new_message", messagePayload.data);
+          return;
+        }
+
+        const updatedPayload = messageUpdatedPayloadSchema.safeParse(rawPayload);
+
+        if (updatedPayload.success) {
+          io.to(updatedPayload.data.roomId).emit("message_updated", updatedPayload.data);
         }
       } catch {
         // Ignore malformed JSON from Redis; only validated messages are broadcast.

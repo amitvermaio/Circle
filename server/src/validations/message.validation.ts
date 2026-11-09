@@ -22,6 +22,19 @@ export const messageReadSchema = z.object({
   messageId: messageIdSchema,
 });
 
+export const messageParamsSchema = z.object({
+  roomId: roomIdSchema,
+  messageId: messageIdSchema,
+});
+
+export const editMessageSchema = z.object({
+  text: z.string().trim().min(1, "Message text is required").max(2000, "Message text must be at most 2000 characters"),
+});
+
+export const deleteMessageQuerySchema = z.object({
+  scope: z.enum(["me", "everyone"]),
+});
+
 export const chatMessagePayloadSchema = z.object({
   event: z.literal("new_message"),
   roomId: roomIdSchema,
@@ -49,6 +62,18 @@ export const receiptPayloadSchema = z.object({
   readerId: z.string().regex(/^[a-f\d]{24}$/i, "Reader ID must be valid"),
 });
 
+export const messageUpdatedPayloadSchema = z.object({
+  event: z.literal("message_updated"),
+  roomId: roomIdSchema,
+  messageId: messageIdSchema,
+  action: z.enum(["edited", "deleted_for_me", "deleted_for_everyone"]),
+  text: z.string().trim().min(1).max(2000).optional(),
+  editedAt: z.string().datetime().optional(),
+  deletedFor: z.array(z.string().regex(/^[a-f\d]{24}$/i, "User ID must be valid")).optional(),
+  deletedForEveryone: z.boolean().optional(),
+});
+
 export type ChatMessagePayload = z.infer<typeof chatMessagePayloadSchema>;
 export type TypingPayload = z.infer<typeof typingPayloadSchema>;
 export type ReceiptPayload = z.infer<typeof receiptPayloadSchema>;
+export type MessageUpdatedPayload = z.infer<typeof messageUpdatedPayloadSchema>;
