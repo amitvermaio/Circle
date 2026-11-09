@@ -68,6 +68,12 @@ export const messageHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(30),
 });
 
+export const messageSearchQuerySchema = z.object({
+  q: z.string().trim().min(1, "Search query is required").max(100, "Search query must be at most 100 characters"),
+  cursor: z.string().datetime("Cursor must be an ISO timestamp").optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(30),
+});
+
 export const typingPayloadSchema = z.object({
   event: z.literal("typing"),
   roomId: roomIdSchema,

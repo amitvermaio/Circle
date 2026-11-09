@@ -9,6 +9,7 @@ import {
   editMessageSchema,
   messageHistoryQuerySchema,
   messageParamsSchema,
+  messageSearchQuerySchema,
   type MessageUpdatedPayload,
 } from "../validations/message.validation";
 
@@ -50,6 +51,65 @@ export async function listMessageHistory(request: Request, response: Response, n
     const messageQuery = cursor
       ? { roomId, deletedFor: { $ne: request.user!.userId }, timestamp: { $lt: new Date(cursor) } }
       : { roomId, deletedFor: { $ne: request.user!.userId } };
+    const messages = await MessageModel.find(messageQuery)
+      .sort({ roomId: 1, timestamp: -1 })
+      .limit(limit + 1);
+    const hasMore = messages.length > limit;
+    const pageMessages = hasMore ? messages.slice(0, limit) : messages;
+    const lastMessage = pageMessages[pageMessages.length - 1];
+
+    response.status(200).json({
+      success: true,
+      data: {
+        messages: pageMessages.map((message) => message.toJSON()),
+        nextCursor: hasMore && lastMessage ? lastMessage.timestamp.toISOString() : null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function searchMessages(request: Request, response: Response, next: NextFunction): Promise<void> {
+  const paramsValidation = roomParamsSchema.safeParse(request.params);
+  const queryValidation = messageSearchQuerySchema.safeParse(request.query);
+
+  if (!paramsValidation.success || !queryValidation.success) {
+    response.status(400).json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid message search request",
+        details: {
+          params: paramsValidation.success ? undefined : paramsValidation.error.flatten(),
+          query: queryValidation.success ? undefined : queryValidation.error.flatten(),
+        },
+      },
+    });
+    return;
+  }
+
+  try {
+    const { roomId } = paramsValidation.data;
+    const { q, cursor, limit } = queryValidation.data;
+    const userId = request.user!.userId;
+    const room = await RoomModel.exists({ roomId, participants: userId });
+
+    if (!room) {
+      response.status(404).json({
+        success: false,
+        error: { code: "NOT_FOUND", message: "Room not found" },
+      });
+      return;
+    }
+
+    const messageQuery = {
+      roomId,
+      $text: { $search: q },
+      deletedFor: { $ne: userId },
+      deletedForEveryone: false,
+      ...(cursor ? { timestamp: { $lt: new Date(cursor) } } : {}),
+    };
     const messages = await MessageModel.find(messageQuery)
       .sort({ roomId: 1, timestamp: -1 })
       .limit(limit + 1);

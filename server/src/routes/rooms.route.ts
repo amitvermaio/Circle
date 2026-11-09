@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { deleteMessage, editMessage, listMessageHistory } from "../controllers/messages.controller";
+import { deleteMessage, editMessage, listMessageHistory, searchMessages } from "../controllers/messages.controller";
 import {
   addRoomMember,
   createGroupRoom,
@@ -23,5 +23,6 @@ roomsRouter.delete("/:roomId/members/:userId", removeRoomMember);
 roomsRouter.patch("/:roomId", updateGroupRoom);
 roomsRouter.patch("/:roomId/messages/:messageId", editMessage);
 roomsRouter.delete("/:roomId/messages/:messageId", deleteMessage);
+roomsRouter.get("/:roomId/messages/search", searchMessages);
 roomsRouter.get("/:roomId/messages", listMessageHistory);
 roomsRouter.get("/:roomId", getRoom);

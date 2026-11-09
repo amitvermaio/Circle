@@ -48,6 +48,7 @@ const messageSchema = new Schema<Message>(
 );
 
 messageSchema.index({ roomId: 1, timestamp: -1 });
+messageSchema.index({ text: "text" });
 
 messageSchema.set("toJSON", {
   transform: (_document, returnedMessage) => {
