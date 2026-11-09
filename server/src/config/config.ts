@@ -10,6 +10,7 @@ const environmentSchema = z.object({
   REDIS_URL: z.string().url("REDIS_URL must be a valid URL"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   FRONTEND_URL: z.string().url("FRONTEND_URL must be a valid URL"),
+  GROUP_ROOM_MAX_MEMBERS: z.coerce.number().int().min(2).max(1_000).default(256),
   SMTP_HOST: z.string().min(1).optional(),
   SMTP_PORT: z.coerce.number().int().min(1).max(65_535).optional(),
   SMTP_USER: z.string().min(1).optional(),

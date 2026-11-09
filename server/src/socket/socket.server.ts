@@ -7,6 +7,7 @@ import { config } from "../config/config";
 import { redisPublisher, redisSubscriber } from "../config/redis";
 import { MessageModel } from "../models/message.model";
 import { RoomModel } from "../models/room.model";
+import { roomMembershipPayloadSchema, type RoomMembershipPayload } from "../validations/room.validation";
 import {
   chatMessagePayloadSchema,
   joinRoomSchema,
@@ -22,6 +23,7 @@ import {
 
 const chatMessagesChannel = "chat:messages";
 const chatReceiptsChannel = "chat:receipts";
+const chatRoomsChannel = "chat:rooms";
 const chatTypingChannel = "chat:typing";
 // This throttle is intentionally in-memory per server instance; Redis fan-out does not share throttle state.
 const lastTypingAtByUserAndRoom = new Map<string, number>();
@@ -38,6 +40,7 @@ interface ClientToServerEvents {
 }
 
 interface ServerToClientEvents {
+  update_membership: (payload: RoomMembershipPayload) => void;
   new_message: (payload: ChatMessagePayload) => void;
   message_read: (payload: ReceiptPayload) => void;
   typing: (payload: TypingPayload) => void;
@@ -79,6 +82,8 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
   });
 
   io.on("connection", (socket) => {
+    void socket.join(getUserSocketRoom(socket.data.userId));
+
     socket.on("join_room", async (payload) => {
       if (!isSocketEventAllowed(socket.id, "join_room")) {
         return;
@@ -253,6 +258,26 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
       return;
     }
 
+    if (channel === chatRoomsChannel) {
+      try {
+        const payload = roomMembershipPayloadSchema.safeParse(JSON.parse(rawMessage) as unknown);
+
+        if (payload.success) {
+          const userSocketRoom = getUserSocketRoom(payload.data.userId);
+          io.to(userSocketRoom).emit("update_membership", payload.data);
+
+          if (payload.data.action === "join") {
+            io.in(userSocketRoom).socketsJoin(payload.data.roomId);
+          } else {
+            io.in(userSocketRoom).socketsLeave(payload.data.roomId);
+          }
+        }
+      } catch {
+        // Ignore malformed membership updates; only validated messages affect socket rooms.
+      }
+      return;
+    }
+
     if (channel !== chatTypingChannel) {
       return;
     }
@@ -268,11 +293,15 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
     }
   });
 
-  void redisSubscriber.subscribe(chatMessagesChannel, chatReceiptsChannel, chatTypingChannel).catch((error: unknown) => {
+  void redisSubscriber.subscribe(chatMessagesChannel, chatReceiptsChannel, chatRoomsChannel, chatTypingChannel).catch((error: unknown) => {
     console.error("Failed to subscribe to chat messages", error);
   });
 
   return io;
+}
+
+function getUserSocketRoom(userId: string): string {
+  return `user:${userId}`;
 }
 
 async function emitTypingToRoom(

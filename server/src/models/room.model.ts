@@ -2,8 +2,12 @@ import { Schema, model, models, Types } from "mongoose";
 
 export interface Room {
   roomId: string;
-  participants: [string, string];
-  participantKey: string;
+  type: "direct" | "group";
+  participants: string[];
+  participantKey?: string;
+  name?: string;
+  photoUrl?: string;
+  admins: string[];
   createdBy: string;
 }
 
@@ -15,21 +19,44 @@ const roomSchema = new Schema<Room>(
       unique: true,
       default: () => new Types.ObjectId().toString(),
     },
+    type: { type: String, required: true, enum: ["direct", "group"], default: "direct" },
     participants: {
       type: [String],
       required: true,
-      validate: {
-        validator: (participants: string[]) => participants.length === 2,
-        message: "A one-to-one room must have exactly two participants",
+    },
+    participantKey: {
+      type: String,
+      unique: true,
+      sparse: true,
+      select: false,
+      required: function (this: Room) {
+        return this.type === "direct";
       },
     },
-    participantKey: { type: String, required: true, unique: true, select: false },
+    name: {
+      type: String,
+      trim: true,
+      required: function (this: Room) {
+        return this.type === "group";
+      },
+    },
+    photoUrl: { type: String, trim: true },
+    admins: { type: [String], required: true, default: [] },
     createdBy: { type: String, required: true },
   },
   { timestamps: true },
 );
 
+roomSchema.pre("validate", function () {
+  const hasValidParticipantCount = this.type === "group" ? this.participants.length >= 2 : this.participants.length === 2;
+
+  if (!hasValidParticipantCount) {
+    this.invalidate("participants", "Direct rooms require exactly two participants and groups require at least two");
+  }
+});
+
 roomSchema.index({ participants: 1 });
+roomSchema.index({ type: 1, participants: 1 });
 
 roomSchema.set("toJSON", {
   transform: (_document, returnedRoom) => {
