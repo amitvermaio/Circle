@@ -9,6 +9,12 @@ export interface Message {
   editedAt?: Date;
   deletedFor: string[];
   deletedForEveryone: boolean;
+  replyTo?: string;
+  forwardedFrom?: {
+    messageId: string;
+    senderId: string;
+  };
+  reactions: Map<string, string[]>;
   deliveredTo: string[];
   readBy: string[];
 }
@@ -28,6 +34,12 @@ const messageSchema = new Schema<Message>(
     editedAt: { type: Date },
     deletedFor: { type: [String], required: true, default: [] },
     deletedForEveryone: { type: Boolean, required: true, default: false },
+    replyTo: { type: String },
+    forwardedFrom: {
+      messageId: { type: String, required: true },
+      senderId: { type: String, required: true },
+    },
+    reactions: { type: Map, of: [String], required: true, default: {} },
     // Per-recipient arrays support atomic $addToSet updates without trusting client status values.
     deliveredTo: { type: [String], required: true, default: [] },
     readBy: { type: [String], required: true, default: [] },

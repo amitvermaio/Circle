@@ -6,16 +6,30 @@ export const joinRoomSchema = z.object({
   roomId: roomIdSchema,
 });
 
-export const sendMessageSchema = z.object({
-  roomId: roomIdSchema,
-  text: z.string().trim().min(1, "Message text is required").max(2000, "Message text must be at most 2000 characters"),
-});
-
 export const typingSchema = z.object({
   roomId: roomIdSchema,
 });
 
 const messageIdSchema = z.string().regex(/^[a-f\d]{24}$/i, "Message ID must be valid");
+const userIdSchema = z.string().regex(/^[a-f\d]{24}$/i, "User ID must be valid");
+const emojiSchema = z.enum(["👍", "❤️", "😂", "😮", "😢", "🙏"]);
+
+export const sendMessageSchema = z.object({
+  roomId: roomIdSchema,
+  text: z.string().trim().min(1, "Message text is required").max(2000, "Message text must be at most 2000 characters"),
+  replyTo: messageIdSchema.optional(),
+});
+
+export const forwardMessageSchema = z.object({
+  targetRoomId: roomIdSchema,
+  messageId: messageIdSchema,
+});
+
+export const reactMessageSchema = z.object({
+  roomId: roomIdSchema,
+  messageId: messageIdSchema,
+  emoji: emojiSchema,
+});
 
 export const messageReadSchema = z.object({
   roomId: roomIdSchema,
@@ -39,9 +53,14 @@ export const chatMessagePayloadSchema = z.object({
   event: z.literal("new_message"),
   roomId: roomIdSchema,
   messageId: messageIdSchema,
-  senderId: z.string().regex(/^[a-f\d]{24}$/i, "Sender ID must be valid"),
+  senderId: userIdSchema,
   text: z.string().trim().min(1).max(2000),
   timestamp: z.string().datetime(),
+  replyTo: messageIdSchema.optional(),
+  forwardedFrom: z.object({
+    messageId: messageIdSchema,
+    senderId: userIdSchema,
+  }).optional(),
 });
 
 export const messageHistoryQuerySchema = z.object({
@@ -52,14 +71,14 @@ export const messageHistoryQuerySchema = z.object({
 export const typingPayloadSchema = z.object({
   event: z.literal("typing"),
   roomId: roomIdSchema,
-  senderId: z.string().regex(/^[a-f\d]{24}$/i, "Sender ID must be valid"),
+  senderId: userIdSchema,
 });
 
 export const receiptPayloadSchema = z.object({
   event: z.literal("message_read"),
   roomId: roomIdSchema,
   messageId: messageIdSchema,
-  readerId: z.string().regex(/^[a-f\d]{24}$/i, "Reader ID must be valid"),
+  readerId: userIdSchema,
 });
 
 export const messageUpdatedPayloadSchema = z.object({
@@ -69,11 +88,19 @@ export const messageUpdatedPayloadSchema = z.object({
   action: z.enum(["edited", "deleted_for_me", "deleted_for_everyone"]),
   text: z.string().trim().min(1).max(2000).optional(),
   editedAt: z.string().datetime().optional(),
-  deletedFor: z.array(z.string().regex(/^[a-f\d]{24}$/i, "User ID must be valid")).optional(),
+  deletedFor: z.array(userIdSchema).optional(),
   deletedForEveryone: z.boolean().optional(),
+});
+
+export const messageReactionPayloadSchema = z.object({
+  event: z.literal("message_reacted"),
+  roomId: roomIdSchema,
+  messageId: messageIdSchema,
+  reactions: z.record(z.string(), z.array(userIdSchema)),
 });
 
 export type ChatMessagePayload = z.infer<typeof chatMessagePayloadSchema>;
 export type TypingPayload = z.infer<typeof typingPayloadSchema>;
 export type ReceiptPayload = z.infer<typeof receiptPayloadSchema>;
 export type MessageUpdatedPayload = z.infer<typeof messageUpdatedPayloadSchema>;
+export type MessageReactionPayload = z.infer<typeof messageReactionPayloadSchema>;

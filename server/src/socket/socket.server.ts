@@ -11,13 +11,17 @@ import { roomMembershipPayloadSchema, type RoomMembershipPayload } from "../vali
 import {
   chatMessagePayloadSchema,
   joinRoomSchema,
+  forwardMessageSchema,
   messageReadSchema,
+  messageReactionPayloadSchema,
   messageUpdatedPayloadSchema,
+  reactMessageSchema,
   receiptPayloadSchema,
   sendMessageSchema,
   typingPayloadSchema,
   typingSchema,
   type ChatMessagePayload,
+  type MessageReactionPayload,
   type MessageUpdatedPayload,
   type ReceiptPayload,
   type TypingPayload,
@@ -35,8 +39,10 @@ const socketEventWindowMs = 10_000;
 const socketEventLimit = 30;
 
 interface ClientToServerEvents {
+  forward_message: (payload: unknown) => void;
   join_room: (payload: unknown) => void;
   message_read: (payload: unknown) => void;
+  react_message: (payload: unknown) => void;
   send_message: (payload: unknown) => void;
   typing: (payload: unknown) => void;
 }
@@ -44,6 +50,7 @@ interface ClientToServerEvents {
 interface ServerToClientEvents {
   update_membership: (payload: RoomMembershipPayload) => void;
   new_message: (payload: ChatMessagePayload) => void;
+  message_reacted: (payload: MessageReactionPayload) => void;
   message_updated: (payload: MessageUpdatedPayload) => void;
   message_read: (payload: ReceiptPayload) => void;
   typing: (payload: TypingPayload) => void;
@@ -127,10 +134,22 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
         return;
       }
 
+      if (validation.data.replyTo) {
+        const repliedToMessage = await MessageModel.exists({
+          roomId: validation.data.roomId,
+          messageId: validation.data.replyTo,
+        });
+
+        if (!repliedToMessage) {
+          return;
+        }
+      }
+
       const message = await MessageModel.create({
         roomId: validation.data.roomId,
         senderId: socket.data.userId,
         text: validation.data.text,
+        replyTo: validation.data.replyTo,
       });
       const messagePayload: ChatMessagePayload = {
         event: "new_message",
@@ -139,9 +158,122 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
         senderId: message.senderId,
         text: message.text,
         timestamp: message.timestamp.toISOString(),
+        replyTo: message.replyTo,
       };
 
       await redisPublisher.publish(chatMessagesChannel, JSON.stringify(messagePayload));
+    });
+
+    socket.on("forward_message", async (payload) => {
+      if (!isSocketEventAllowed(socket.id, "forward_message")) {
+        return;
+      }
+
+      const validation = forwardMessageSchema.safeParse(payload);
+
+      if (!validation.success) {
+        return;
+      }
+
+      const sourceMessage = await MessageModel.findOne({
+        messageId: validation.data.messageId,
+        deletedForEveryone: false,
+      });
+
+      if (!sourceMessage) {
+        return;
+      }
+
+      const [sourceRoom, targetRoom] = await Promise.all([
+        RoomModel.exists({ roomId: sourceMessage.roomId, participants: socket.data.userId }),
+        RoomModel.exists({ roomId: validation.data.targetRoomId, participants: socket.data.userId }),
+      ]);
+
+      if (!sourceRoom || !targetRoom) {
+        return;
+      }
+
+      const forwardedFrom = sourceMessage.forwardedFrom ?? {
+        messageId: sourceMessage.messageId,
+        senderId: sourceMessage.senderId,
+      };
+      const message = await MessageModel.create({
+        roomId: validation.data.targetRoomId,
+        senderId: socket.data.userId,
+        text: sourceMessage.text,
+        forwardedFrom,
+      });
+      const messagePayload: ChatMessagePayload = {
+        event: "new_message",
+        roomId: message.roomId,
+        messageId: message.messageId,
+        senderId: message.senderId,
+        text: message.text,
+        timestamp: message.timestamp.toISOString(),
+        forwardedFrom: message.forwardedFrom,
+      };
+
+      await redisPublisher.publish(chatMessagesChannel, JSON.stringify(messagePayload));
+    });
+
+    socket.on("react_message", async (payload) => {
+      if (!isSocketEventAllowed(socket.id, "react_message")) {
+        return;
+      }
+
+      const validation = reactMessageSchema.safeParse(payload);
+
+      if (!validation.success) {
+        return;
+      }
+
+      const room = await RoomModel.exists({
+        roomId: validation.data.roomId,
+        participants: socket.data.userId,
+      });
+
+      if (!room) {
+        return;
+      }
+
+      const message = await MessageModel.findOne({
+        roomId: validation.data.roomId,
+        messageId: validation.data.messageId,
+        deletedForEveryone: false,
+      });
+
+      if (!message) {
+        return;
+      }
+
+      const reactions = new Map<string, string[]>(message.reactions as unknown as Iterable<[string, string[]]>);
+      const selectedReactionHadUser = (reactions.get(validation.data.emoji) ?? []).includes(socket.data.userId);
+
+      for (const [emoji, userIds] of reactions.entries()) {
+        const remainingUserIds = userIds.filter((userId) => userId !== socket.data.userId);
+
+        if (remainingUserIds.length === 0) {
+          reactions.delete(emoji);
+        } else {
+          reactions.set(emoji, remainingUserIds);
+        }
+      }
+
+      if (!selectedReactionHadUser) {
+        reactions.set(validation.data.emoji, [...(reactions.get(validation.data.emoji) ?? []), socket.data.userId]);
+      }
+
+      message.reactions = reactions;
+      message.markModified("reactions");
+      await message.save();
+
+      const reactionPayload: MessageReactionPayload = {
+        event: "message_reacted",
+        roomId: message.roomId,
+        messageId: message.messageId,
+        reactions: Object.fromEntries(reactions.entries()),
+      };
+      await redisPublisher.publish(chatMessagesChannel, JSON.stringify(reactionPayload));
     });
 
     socket.on("message_read", async (payload) => {
@@ -228,7 +360,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
     });
 
     socket.on("disconnect", () => {
-      for (const eventName of ["join_room", "send_message", "message_read", "typing"]) {
+      for (const eventName of ["join_room", "send_message", "forward_message", "react_message", "message_read", "typing"]) {
         socketEventWindows.delete(`${socket.id}:${eventName}`);
       }
     });
@@ -249,6 +381,13 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
 
         if (updatedPayload.success) {
           io.to(updatedPayload.data.roomId).emit("message_updated", updatedPayload.data);
+          return;
+        }
+
+        const reactionPayload = messageReactionPayloadSchema.safeParse(rawPayload);
+
+        if (reactionPayload.success) {
+          io.to(reactionPayload.data.roomId).emit("message_reacted", reactionPayload.data);
         }
       } catch {
         // Ignore malformed JSON from Redis; only validated messages are broadcast.
