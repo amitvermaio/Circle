@@ -14,7 +14,7 @@ const environmentSchema = z.object({
   SMTP_PORT: z.coerce.number().int().min(1).max(65_535).optional(),
   SMTP_USER: z.string().min(1).optional(),
   SMTP_PASS: z.string().min(1).optional(),
-  MAIL_FROM: z.string().min(1).optional(),
+  // MAIL_FROM: z.string().min(1).optional(),
   DEV_FIXED_OTP: z.string().regex(/^\d{6}$/, "DEV_FIXED_OTP must be a 6-digit string").optional(),
 }).superRefine((environment, context) => {
   if (environment.NODE_ENV === "production" && environment.DEV_FIXED_OTP !== undefined) {
