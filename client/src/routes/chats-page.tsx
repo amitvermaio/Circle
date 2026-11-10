@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { logout } from '@/features/auth/auth.api'
@@ -31,7 +31,10 @@ export function ChatsPage() {
             <h1 className="text-2xl font-medium tracking-tight sm:text-3xl">Chats</h1>
             <p className="mt-2 text-sm text-muted-foreground">Your chat workspace is ready for its next feature.</p>
           </div>
-          <Button type="button" variant="outline" onClick={handleLogout} disabled={busy}>Log out</Button>
+          <div className="flex items-center gap-2">
+            <Button asChild type="button" variant="ghost"><Link to="/profile">Profile</Link></Button>
+            <Button type="button" variant="outline" onClick={handleLogout} disabled={busy}>Log out</Button>
+          </div>
         </div>
       </section>
     </main>

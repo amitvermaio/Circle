@@ -4,6 +4,7 @@ import { getAuthToken } from '@/lib/api'
 
 import { LoginPage, RegisterPage, VerifyOtpPage } from './auth-pages'
 import { ChatsPage } from './chats-page'
+import { ProfilePage } from './profile-page'
 
 type PlaceholderPageProps = {
   title: string
@@ -33,6 +34,7 @@ export function AppRouter() {
         <Route path="/verify-otp" element={<VerifyOtpPage />} />
         <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
         <Route path="/chats/:roomId" element={<ProtectedRoute><PlaceholderPage title="Chat" /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
