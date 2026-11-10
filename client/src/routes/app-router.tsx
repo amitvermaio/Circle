@@ -1,5 +1,10 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 
+import { getAuthToken } from '@/lib/api'
+
+import { LoginPage, RegisterPage, VerifyOtpPage } from './auth-pages'
+import { ChatsPage } from './chats-page'
+
 type PlaceholderPageProps = {
   title: string
 }
@@ -15,15 +20,19 @@ function PlaceholderPage({ title }: PlaceholderPageProps) {
   )
 }
 
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  return getAuthToken() ? children : <Navigate to="/login" replace />
+}
+
 export function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<PlaceholderPage title="Log in" />} />
-        <Route path="/register" element={<PlaceholderPage title="Register" />} />
-        <Route path="/verify-otp" element={<PlaceholderPage title="Verify email" />} />
-        <Route path="/chats" element={<PlaceholderPage title="Chats" />} />
-        <Route path="/chats/:roomId" element={<PlaceholderPage title="Chat" />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/verify-otp" element={<VerifyOtpPage />} />
+        <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
+        <Route path="/chats/:roomId" element={<ProtectedRoute><PlaceholderPage title="Chat" /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

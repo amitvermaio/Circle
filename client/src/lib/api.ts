@@ -1,31 +1,51 @@
-import { clearAuthToken, getAuthToken } from './auth'
-
 type ApiSuccess<T> = { success: true; data: T }
 type ApiFailure = {
   success: false
-  error: { code: string; message: string }
+  error: { code: string; message: string; details?: unknown }
 }
 
-type ApiResponse<T> = ApiSuccess<T> | ApiFailure
+function isApiSuccess<T>(value: unknown): value is ApiSuccess<T> {
+  return typeof value === 'object' && value !== null && 'success' in value && value.success === true && 'data' in value
+}
+
+function isApiFailure(value: unknown): value is ApiFailure {
+  return typeof value === 'object' && value !== null && 'success' in value && value.success === false && 'error' in value
+}
 
 export class ApiError extends Error {
   readonly code: string
   readonly status: number
+  readonly details: unknown
 
-  constructor(message: string, code: string, status: number) {
+  constructor(message: string, code: string, status: number, details?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
+    this.details = details
   }
 }
 
 type ApiOptions = Omit<RequestInit, 'body' | 'headers'> & {
   body?: unknown
   headers?: HeadersInit
+  responseType?: 'envelope' | 'raw'
 }
 
 const apiUrl = import.meta.env.VITE_API_URL
+const TOKEN_STORAGE_KEY = 'chat_token'
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_STORAGE_KEY)
+}
+
+export function setAuthToken(token: string): void {
+  localStorage.setItem(TOKEN_STORAGE_KEY, token)
+}
+
+export function clearAuthToken(): void {
+  localStorage.removeItem(TOKEN_STORAGE_KEY)
+}
 
 function redirectToLogin(): void {
   if (window.location.pathname !== '/login') {
@@ -61,10 +81,17 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     throw new ApiError('Unable to reach the server.', 'NETWORK_ERROR', 0)
   }
 
-  const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null
+  const payload: unknown = await response.json().catch(() => null)
 
-  if (!payload || payload.success !== true) {
-    const error = payload && 'error' in payload ? payload.error : undefined
+  if (options.responseType === 'raw') {
+    if (!response.ok || payload === null) {
+      throw new ApiError('The request could not be completed.', 'REQUEST_FAILED', response.status)
+    }
+    return payload as T
+  }
+
+  if (!isApiSuccess<T>(payload)) {
+    const error = isApiFailure(payload) ? payload.error : undefined
     const code = error?.code ?? 'REQUEST_FAILED'
     const message = error?.message ?? 'The request could not be completed.'
 
@@ -73,7 +100,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
       redirectToLogin()
     }
 
-    throw new ApiError(message, code, response.status)
+    throw new ApiError(message, code, response.status, error?.details)
   }
 
   return payload.data
