@@ -253,3 +253,74 @@
 @utility btn-asym-mirror {
     border-radius: var(--radius) 0 var(--radius) 0;
 }
+
+/* The landing page keeps its light preview surfaces in both themes. */
+.circle-home {
+  --foreground: var(--sand-beige);
+  --primary: var(--electric-purple);
+  --primary-foreground: var(--forest-green);
+  --primary-hover: var(--purple-on-forest);
+  --brand: var(--sand-beige);
+  --ring: var(--purple-on-forest);
+  --accent: var(--forest-selection);
+  background: var(--sand-beige);
+  color: var(--forest-green);
+}
+.circle-home-hero {
+  background: linear-gradient(180deg, var(--forest-green) 0%, var(--forest-green) 48%,
+    color-mix(in srgb, var(--forest-green) 65%, var(--electric-purple)) 65%,
+    var(--electric-purple) 80%, var(--sand-beige) 100%);
+}
+.circle-home-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.16;
+  background-image: radial-gradient(var(--sand-beige) 0.8px, transparent 0.8px);
+  background-size: 20px 20px;
+  mask-image: linear-gradient(black, black 65%, transparent);
+}
+.circle-home-nav {
+  color: var(--sand-beige);
+  border-color: color-mix(in srgb, var(--sand-beige) 22%, transparent);
+  background: color-mix(in srgb, var(--forest-green) 78%, transparent);
+  backdrop-filter: blur(12px);
+}
+.circle-home-copy { color: var(--sand-beige); }
+.circle-home-subtitle { color: color-mix(in srgb, var(--sand-beige) 86%, var(--forest-green)); }
+.circle-home-accent { color: var(--electric-purple); }
+.circle-home-sparkle {
+  background: var(--electric-purple);
+  color: var(--forest-green);
+  animation: circle-twinkle 5s ease-in-out infinite;
+}
+@keyframes circle-twinkle {
+  0%, 100% { opacity: 0.7; transform: rotate(-8deg); }
+  50% { opacity: 1; transform: rotate(8deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .circle-home-sparkle { animation: none; }
+}
+.circle-preview {
+  --card: var(--sand-beige);
+  --card-foreground: var(--forest-green);
+  --foreground: var(--forest-green);
+  --muted-foreground: var(--forest-green);
+  --accent: color-mix(in srgb, var(--sand-beige) 88%, var(--electric-purple));
+  --accent-foreground: var(--forest-green);
+  --border: color-mix(in srgb, var(--forest-green) 16%, transparent);
+  --card-edge: transparent;
+  background: var(--sand-beige);
+  color: var(--forest-green);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--forest-green) 12%, transparent);
+}
+.circle-preview-avatar { background: color-mix(in srgb, var(--sand-beige) 75%, var(--electric-purple)); }
+@media (max-width: 767px) {
+  .circle-home-hero {
+    background: linear-gradient(180deg, var(--forest-green) 0%, var(--forest-green) 42%,
+      var(--electric-purple) 64%, var(--sand-beige) 88%);
+  }
+}
