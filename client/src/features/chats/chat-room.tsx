@@ -579,7 +579,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId, onOpenGroupSettin
 
   return (
     <>
-      <header className="forest-header flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-4 py-2">
+      <header className="bg-card flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-4 py-2">
         <Button asChild variant="ghost" size="icon" className="size-8 md:hidden">
           <Link to="/chats" aria-label="Back to chats"><ArrowLeftIcon aria-hidden /></Link>
         </Button>
@@ -679,6 +679,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId, onOpenGroupSettin
             const pinned = visiblePins.some(({ messageId }) => messageId === message.messageId)
             const unread = currentUserId && !own && !message.deletedForEveryone && !message.readBy?.includes(currentUserId)
             const media = message.deletedForEveryone ? undefined : message.media
+            const imageOnly = !message.text && !!media?.length && media.every(({ type }) => type.startsWith('image/'))
             const liveStatus = receipts[message.messageId]
             // In a group, a tick advances when at least one recipient confirms the status.
             const status = liveStatus === 'read' || message.readBy?.length ? 'Read'
@@ -688,7 +689,8 @@ export function ChatRoom({ roomId, room, rooms, currentUserId, onOpenGroupSettin
                 className={cn('message-row flex px-1', own ? 'justify-end' : 'justify-start', index > 0 && (grouped ? 'mt-1' : 'mt-4'))}>
                 <article tabIndex={-1} className={cn('message-bubble relative min-w-0 max-w-[70%] px-4 py-3',
                   own ? 'message-bubble-outgoing' : 'message-bubble-incoming', hasReactions && 'mb-4', highlightedMessage === message.messageId && 'ring-2 ring-inset ring-ring',
-                  media?.some(({ type }) => type.startsWith('image/') || type === 'video/mp4') && 'w-md')}>
+                  imageOnly && 'message-bubble-image w-fit max-w-[min(70%,328px)] p-1',
+                  media?.some(({ type }) => type === 'video/mp4') && 'w-md')}>
                   {!own && !grouped && <p className="mb-1 break-words text-xs font-semibold">{nameFor(message.senderId)}</p>}
                   <div className="message-toolbar">
                     {!message.deletedForEveryone && (
@@ -715,7 +717,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId, onOpenGroupSettin
                     </p>
                   )}
                   {!!media?.length && <MessageAttachments media={media} />}
-                  <div className="mt-1 flex flex-wrap items-center justify-end gap-1 text-[10px] text-muted-foreground">
+                  <div className={cn("mt-1 flex flex-wrap items-center justify-end gap-1 text-[10px] text-muted-foreground", imageOnly && "px-2 pb-1")}>
                       <time dateTime={message.timestamp}>{timeFormat.format(new Date(message.timestamp))}</time>
                       {own && !message.deletedForEveryone && (
                         <Tooltip>

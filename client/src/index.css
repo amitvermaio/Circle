@@ -416,3 +416,41 @@
   .message-toolbar:has([data-state="open"]),
   .message-bubble.ring-2 .message-toolbar { opacity: 1; }
 }
+
+/* Match the landing page's sand surfaces even when the global theme is dark. */
+.chat-workspace {
+  color-scheme: light;
+  --background: var(--sand-beige);
+  --card: color-mix(in srgb, var(--sand-beige) 74%, white);
+  --foreground: var(--forest-green);
+  --card-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--sand-beige) 88%, white);
+  --muted-foreground: color-mix(in srgb, var(--forest-green) 80%, var(--sand-beige));
+  --primary: var(--electric-purple);
+  --primary-foreground: var(--forest-ink);
+  --primary-hover: var(--purple-on-forest);
+  --accent: color-mix(in srgb, var(--sand-beige) 90%, var(--electric-purple));
+  --chat-selection: color-mix(in srgb, var(--sand-beige) 76%, var(--electric-purple));
+  --accent-foreground: var(--foreground);
+  --brand: var(--purple-on-sand);
+  --highlight: var(--brand);
+  --ring: var(--brand);
+  --border: color-mix(in srgb, var(--sand-beige) 80%, var(--forest-green));
+  --input: color-mix(in srgb, var(--sand-beige) 46%, var(--forest-green));
+  --destructive: #8b263c;
+  background: var(--background);
+  color: var(--foreground);
+}
+.chat-workspace header h1 svg { color: var(--brand); }
+
+.message-bubble-image {
+  background: var(--card);
+  color: var(--forest-green);
+  --foreground: var(--forest-green);
+  --muted-foreground: color-mix(in srgb, var(--forest-green) 80%, var(--sand-beige));
+  --ring: var(--purple-on-sand);
+  --accent: var(--sand-beige);
+  box-shadow: 0 0 0 1px var(--chat-image-border);
+  --chat-image-border: color-mix(in srgb, var(--forest-green) 18%, var(--sand-beige));
+}
+.message-bubble-image .message-read { color: var(--purple-on-sand); }

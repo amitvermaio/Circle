@@ -101,7 +101,7 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
   }
 
   return (
-    <main className="grid h-dvh grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden [--spacing:0.25rem] md:grid-cols-[300px_minmax(0,1fr)]">
+    <main className="chat-workspace grid h-dvh grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden [--spacing:0.25rem] md:grid-cols-[300px_minmax(0,1fr)]">
       <aside aria-label="Chat sidebar" className={cn(
         'min-h-0 min-w-0 overflow-y-auto overscroll-y-contain bg-card [scrollbar-width:thin] md:border-r md:border-border',
         roomId && 'hidden md:block',
@@ -147,7 +147,7 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
             <ul className="space-y-1 px-4 py-2">
               {rooms.map((room) => (
                 <li key={room.roomId}>
-                  <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 px-2 py-2 text-left aria-[current=page]:bg-accent aria-[current=page]:text-brand">
+                  <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 px-2 py-2 text-left aria-[current=page]:bg-[var(--chat-selection)] aria-[current=page]:text-brand">
                     <NavLink to={`/chats/${encodeURIComponent(room.roomId)}`} end>
                       <span className="grid size-8 shrink-0 place-items-center rounded-md border border-border" aria-hidden>
                         {room.type === 'group' ? <UsersIcon /> : <ChatCircleIcon />}
@@ -178,7 +178,7 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
               onOpenGroupSettings={() => setSettingsRoomId(roomId)} />
           ) : (
             <>
-              <header className="forest-header flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+              <header className="bg-card flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
                 <Button asChild variant="ghost" size="icon" className="size-8 md:hidden">
                   <Link to="/chats" aria-label="Back to chats"><ArrowLeftIcon aria-hidden /></Link>
                 </Button>
