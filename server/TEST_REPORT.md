@@ -1,24 +1,29 @@
 # Test Report
-Commit: 1c4a000  Date: 2026-11-22  Environment: local MongoDB and configured Redis require server/.env.test
+Commit: f0f0650 plus working-tree changes  Date: 2026-11-22  Environment: Docker Compose chat-test, MongoDB 7 on 127.0.0.1:27018 and Redis 7 Alpine on 127.0.0.1:6380
 
 ## Summary
 | Status | Count |
 |---|---:|
 | Total features in Current | 25 |
-| PASS | 0 |
+| PASS | 6 |
 | FAIL | 0 |
 | NOT_IMPLEMENTED | 0 |
-| INCONSISTENT | 2 |
+| INCONSISTENT | 1 |
 
-Tests: 7 defined, 0 passed, 0 failed, 0 skipped. Vitest stopped during global setup because `server/.env.test` was missing. Flaky: unknown.
+Tests: 7 defined, 7 passed, 0 failed, 0 skipped across two files. Flaky: not assessed across repeated runs of the final configuration.
 
 ## Failing features
 
-No feature test reached execution. The test environment failed before Vitest collected test files.
+None in the seven executed tests.
 
 ## Passing features
 
-None executed because test environment configuration was missing.
+- OTP registration and response redaction (1 test)
+- Registration validation and error response shape (1 test)
+- HTTP bearer authentication (1 test)
+- Direct room creation and participant authorization (1 test)
+- Socket authentication and token revocation (2 tests)
+- Persisted message delivery via Redis and socket sender identity (1 test)
 
 ## Not implemented
 
@@ -30,8 +35,8 @@ None listed under `Current` in `server/AGENTS.md` were classified as not impleme
 
 ## Environment limits
 
-- Copy `server/.env.test.example` to `server/.env.test` and enter a dedicated local MongoDB database URI, such as `mongodb://127.0.0.1:27017/chat_test`. The harness drops that database's collections at startup and closes its connection during teardown.
-- Redis connectivity was not tested because `server/.env.test` was missing. Setup checks the configured `REDIS_URL` with a bounded connection and ping and reports an explicit error if Redis cannot be reached.
-- `pnpm tsc --noEmit` and the separate test typecheck both reported TS7006 in the existing working-tree changes to `rooms.controller.ts` at lines 282 and 290. Neither reported TS6059.
-- Redis fan-out and other backend feature tests could not run during this attempt.
+- `pnpm test:infra:up` succeeded and Compose reported both containers healthy. `pnpm test` passed and removed the containers, test volumes, and network. The separate `pnpm test:infra:down` also exited successfully.
+- The initial run picked up duplicate suites under a temporary typecheck snapshot. Vitest discovery is now limited to `tests/`, and the reported results are from that rerun.
+- The working-tree run included existing application edits. The main typecheck still reports TS7006 at lines 282 and 290 of the working-tree `rooms.controller.ts`. The main and test typechecks passed against committed application source with the harness changes.
+- The suite checks Redis-backed message delivery on one Socket.IO instance. Cross-instance fan-out and other unlisted features were outside this run's coverage.
 - ImageKit attachment verification additionally requires a provider file record; no external account credentials were used.

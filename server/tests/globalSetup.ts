@@ -5,10 +5,12 @@ import Redis from "ioredis";
 import mongoose from "mongoose";
 import { z } from "zod";
 
-const mongoHelp = "Check that MongoDB is running and Compass can reach the MONGO_URI in server/.env.test.";
+const mongoUri = "mongodb://127.0.0.1:27018/chat_test";
+const redisUrl = "redis://127.0.0.1:6380";
+const infraHelp = "Check Docker Compose health with: docker compose -p chat-test -f docker-compose.test.yml ps";
 const testEnvironment = z.object({
-  MONGO_URI: z.string().min(1),
-  REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+  MONGO_URI: z.literal(mongoUri),
+  REDIS_URL: z.literal(redisUrl),
   JWT_SECRET: z.string().min(32),
   DEV_FIXED_OTP: z.string().regex(/^\d{6}$/),
   FRONTEND_URL: z.url(),
@@ -29,34 +31,23 @@ export default async function globalSetup(project: { provide: (key: "testEnv", v
   } catch (error) {
     const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
     const reason = missing ? "Missing server/.env.test. Copy server/.env.test.example to server/.env.test and fill it in." : "Could not read server/.env.test.";
-    throw new Error(`${reason} ${mongoHelp}`);
+    throw new Error(reason);
   }
 
   const parsed = testEnvironment.safeParse(parse(contents));
   if (!parsed.success) {
     const keys = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
-    throw new Error(`Invalid or missing settings in server/.env.test: ${keys}. ${mongoHelp}`);
+    throw new Error(`Invalid or missing settings in server/.env.test: ${keys}. Expected MONGO_URI=${mongoUri} and REDIS_URL=${redisUrl}.`);
   }
 
   const env = parsed.data;
-  const mongoUrl = URL.canParse(env.MONGO_URI) ? new URL(env.MONGO_URI) : undefined;
-  const databaseName = mongoUrl?.pathname.slice(1);
-  // Collection drops are allowed only on the explicitly named local test database.
-  if (
-    mongoUrl?.protocol !== "mongodb:" ||
-    mongoUrl.hostname !== "127.0.0.1" ||
-    !databaseName ||
-    !/^(?:test|[a-z0-9_-]+[_-]test)$/i.test(databaseName)
-  ) {
-    throw new Error(`MONGO_URI must use 127.0.0.1 and name a dedicated database such as chat_test. ${mongoHelp}`);
-  }
 
   const mongo = mongoose.createConnection();
   try {
     await mongo.openUri(env.MONGO_URI, { serverSelectionTimeoutMS: 3000 });
   } catch {
     await mongo.close();
-    throw new Error(`Cannot connect to MongoDB using server/.env.test. ${mongoHelp}`);
+    throw new Error(`Cannot connect to test MongoDB at ${mongoUri}. ${infraHelp}`);
   }
 
   try {
@@ -70,13 +61,13 @@ export default async function globalSetup(project: { provide: (key: "testEnv", v
       await redis.connect();
       await redis.ping();
     } catch {
-      throw new Error("Cannot reach Redis using REDIS_URL from server/.env.test. Check the URL, credentials, and whether Redis is running.");
+      throw new Error(`Cannot connect to test Redis at ${redisUrl}. ${infraHelp}`);
     } finally {
       redis.disconnect();
     }
 
     const db = mongo.db!;
-    if (db.databaseName !== databaseName) {
+    if (db.databaseName !== "chat_test") {
       throw new Error("Connected MongoDB database does not match the test database named in MONGO_URI.");
     }
     for (const { name } of await db.listCollections({ type: "collection" }, { nameOnly: true }).toArray()) {
