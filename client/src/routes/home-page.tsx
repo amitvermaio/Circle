@@ -42,7 +42,11 @@ function ChatPreview() {
   )
 }
 
-export function HomePage() {
+export function HomePage({ authenticated }: { authenticated: boolean }) {
+  const primaryDestination = authenticated ? '/chats' : '/register'
+  const secondaryDestination = authenticated ? '/profile' : '/login'
+  const secondaryLabel = authenticated ? 'Profile' : 'Log in'
+
   return (
     <div className="circle-home min-h-dvh [--spacing:0.25rem]">
       <main>
@@ -53,8 +57,8 @@ export function HomePage() {
             </Link>
             <div className="flex items-center gap-2 sm:gap-4">
               <Link to="/home" aria-current="page" className="hidden text-sm sm:block">Home</Link>
-              <Button asChild variant="ghost" size="sm" className="rounded-full"><Link to="/login">Log in</Link></Button>
-              <Button asChild variant="soft" size="sm" className="rounded-full"><Link to="/register">Sign up</Link></Button>
+              <Button asChild variant="ghost" size="sm" className="rounded-full"><Link to={secondaryDestination}>{secondaryLabel}</Link></Button>
+              <Button asChild variant="soft" size="sm" className="rounded-full"><Link to={primaryDestination}>{authenticated ? 'Chats' : 'Sign up'}</Link></Button>
             </div>
           </nav>
           <div className="circle-home-copy relative mx-auto max-w-4xl py-12 text-center sm:py-14">
@@ -68,8 +72,8 @@ export function HomePage() {
               Keep close in real time. Chat with your people, bring your groups together, and share the little moments in stories.
             </p>
             <div className="mt-8 flex justify-center gap-4">
-              <Button asChild variant="soft" className="h-12 rounded-full px-8"><Link to="/register">Get started</Link></Button>
-              <Button asChild variant="outline" className="h-12 rounded-full px-8"><Link to="/login">Log in</Link></Button>
+              <Button asChild variant="soft" className="h-12 rounded-full px-8"><Link to={primaryDestination}>{authenticated ? 'Go to chats' : 'Get started'}</Link></Button>
+              <Button asChild variant="outline" className="h-12 rounded-full px-8"><Link to={secondaryDestination}>{secondaryLabel}</Link></Button>
             </div>
           </div>
           <div className="relative mx-auto mt-20 max-w-5xl translate-y-12 sm:mt-24">
