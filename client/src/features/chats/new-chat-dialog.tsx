@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogActions } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { directContactUnavailable } from '@/features/blocking/blocking.api'
 import { ApiError } from '@/lib/api'
 
 import { createDirectRoom, searchUsers, type ChatUser, type Room } from './chats.api'
@@ -53,7 +54,9 @@ export function NewChatDialog({ onClose, onOpenRoom }: Props) {
       const { room } = await createDirectRoom(user.userId)
       onOpenRoom({ ...room, directUser: user })
     } catch (error) {
-      setError(error instanceof ApiError ? error.message : 'Could not open the chat.')
+      setError(error instanceof ApiError
+        ? error.code === 'USER_BLOCKED' ? directContactUnavailable : error.message
+        : 'Could not open the chat.')
       setOpening(null)
     }
   }

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { changePassword, getCurrentUser, type AuthenticatedUser, updateProfile } from '@/features/auth/auth.api'
 import { getErrorMessage, getFieldErrors } from '@/features/auth/validation'
+import { BlockedUsersPanel } from '@/features/blocking/blocked-users-panel'
 import { ApiError, setAuthToken } from '@/lib/api'
 import { connectSocket } from '@/lib/socket'
 
@@ -136,6 +137,7 @@ export function ProfilePage() {
                 <Button type="submit" variant="soft" disabled={passwordBusy} aria-busy={passwordBusy || undefined}>Change password</Button>
               </form>
             </section>
+            <BlockedUsersPanel />
           </div>
         ) : null}
       </main>

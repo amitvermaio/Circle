@@ -29,7 +29,10 @@ export type MessageUpdate = RoomPayload & {
   deletedFor?: string[]
 }
 type MembershipUpdate = RoomPayload & { userId: string; action: 'join' | 'leave' }
-type Ack = (result: { success: boolean }) => void
+type ActionError = { code: string; message: string }
+export type SocketActionError = RoomPayload & { success: false; error: ActionError }
+export type UserBlockedEvent = { event: 'user_blocked'; blockerId: string; blockedId: string }
+type Ack = (result: { success: boolean; error?: ActionError }) => void
 type ChatSocket = Socket<
   {
     new_message: (message: RoomMessage) => void
@@ -37,6 +40,8 @@ type ChatSocket = Socket<
     message_reacted: (update: RoomPayload & { messageId: string; reactions: Record<string, string[]> }) => void
     pins_updated: (update: RoomPayload) => void
     update_membership: (update: MembershipUpdate) => void
+    user_blocked: (event: UserBlockedEvent) => void
+    socket_error: (event: SocketActionError) => void
     typing: (update: RoomPayload & { senderId: string }) => void
     message_delivered: (receipt: MessagePayload & { readerId: string }) => void
     message_read: (receipt: MessagePayload & { readerId: string }) => void

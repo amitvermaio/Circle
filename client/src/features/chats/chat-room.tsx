@@ -4,8 +4,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEve
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { BlockUserAction } from '@/features/blocking/block-user-action'
+import { directContactUnavailable } from '@/features/blocking/blocking.api'
+import { useBlockedUsers } from '@/features/blocking/use-blocked-users'
 import { ApiError, getAuthToken } from '@/lib/api'
-import { connectSocket, getSocket, type MessageUpdate, type RoomMessage, type UploadedMedia } from '@/lib/socket'
+import { connectSocket, getSocket, type MessageUpdate, type RoomMessage, type SocketActionError,
+  type UploadedMedia, type UserBlockedEvent } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 
 import { getGroupMembers, listRoomMessages, type ChatUser, type Room } from './chats.api'
@@ -39,6 +43,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   const [historyError, setHistoryError] = useState('')
   const [retry, setRetry] = useState(0)
   const [joined, setJoined] = useState(false)
+  const [socketBlocked, setSocketBlocked] = useState(false)
   const [socketError, setSocketError] = useState('')
   const [socketRetry, setSocketRetry] = useState(0)
   const [draft, setDraft] = useState('')
@@ -66,6 +71,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   const [jumpTarget, setJumpTarget] = useState<string>()
   const [highlightedMessage, setHighlightedMessage] = useState<string>()
   const lastTypingAt = useRef(-Infinity)
+  const socketBlockedRef = useRef(false)
   const currentUserRef = useRef(currentUserId)
   const composer = useRef<HTMLInputElement>(null)
   const filePicker = useRef<HTMLInputElement>(null)
@@ -75,7 +81,30 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   const stayAtLatest = useRef(true)
   const olderRequest = useRef<AbortController | null>(null)
   const olderAnchor = useRef<{ element: HTMLElement; top: number } | null>(null)
-  useVisibleReads(roomId, joined, messageList)
+  const directContact = room.type === 'direct' ? room.directUser : undefined
+  const directContactId = room.type === 'direct'
+    ? directContact?.userId ?? (currentUserId ? room.participants.find((id) => id !== currentUserId) : undefined)
+    : undefined
+  const isDirect = room.type === 'direct'
+  const { users: blockedUsers, loadError: blockListError, refresh: refreshBlockedUsers, updateBlock } = useBlockedUsers(isDirect)
+  const blockedByYou = blockedUsers?.some(({ userId }) => userId === directContactId) ?? false
+  const blocked = isDirect && (blockedByYou || socketBlocked)
+  useVisibleReads(roomId, joined && !blocked, messageList)
+
+  const markBlocked = useCallback(() => {
+    socketBlockedRef.current = true
+    setSocketBlocked(true)
+    setJoined(false)
+    setSendError('')
+    setSocketError('')
+    setTypingUsers([])
+  }, [])
+
+  function retryConnection() {
+    setJoined(false)
+    setSocketError('')
+    setSocketRetry((value) => value + 1)
+  }
 
   useEffect(() => {
     currentUserRef.current = currentUserId
@@ -194,9 +223,17 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
       try {
         const result = await activeSocket.timeout(10_000).emitWithAck('join_room', { roomId })
         if (!active || attempt !== joinAttempt) return
+        if (isDirect && result.error?.code === 'USER_BLOCKED') {
+          markBlocked()
+          return
+        }
         setJoined(result.success)
         if (!result.success) setSocketError('Could not join this conversation.')
-        else setPinRevision((value) => value + 1)
+        else {
+          socketBlockedRef.current = false
+          setSocketBlocked(false)
+          setPinRevision((value) => value + 1)
+        }
       } catch {
         if (active && attempt === joinAttempt) setSocketError('Joining this conversation timed out.')
       }
@@ -207,7 +244,8 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
       setMessages((current) => current.some(({ messageId }) => messageId === message.messageId)
         ? current
         : mergeMessages(current, [message]))
-      if (activeSocket.connected && message.senderId !== currentUserRef.current && !reportedDeliveries.has(message.messageId)) {
+      if (activeSocket.connected && !socketBlockedRef.current && message.senderId !== currentUserRef.current
+        && !reportedDeliveries.has(message.messageId)) {
         reportedDeliveries.add(message.messageId)
         // The server rejects self-receipts even before the current user's profile loads.
         activeSocket.emit('message_delivered', { roomId, messageId: message.messageId })
@@ -215,7 +253,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
     }
 
     function onTyping({ roomId: eventRoomId, senderId }: { roomId: string; senderId: string }) {
-      if (eventRoomId !== roomId) return
+      if (eventRoomId !== roomId || socketBlockedRef.current) return
       window.clearTimeout(typingTimers.get(senderId))
       setTypingUsers((current) => current.includes(senderId) ? current : [...current, senderId])
       typingTimers.set(senderId, window.setTimeout(() => {
@@ -271,9 +309,29 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
       setSocketError('Could not connect to chat.')
     }
 
+    function onSocketError(event: SocketActionError) {
+      if (isDirect && event.roomId === roomId && event.error.code === 'USER_BLOCKED') {
+        joinAttempt += 1
+        clearTypingTimers()
+        markBlocked()
+      }
+    }
+
+    function onUserBlocked({ blockerId, blockedId }: UserBlockedEvent) {
+      const users = [blockerId, blockedId]
+      const currentUser = currentUserRef.current
+      if (!directContactId || !users.includes(directContactId) || (currentUser && !users.includes(currentUser))) return
+      joinAttempt += 1
+      clearTypingTimers()
+      markBlocked()
+      if (blockedId === directContactId) refreshBlockedUsers()
+    }
+
     activeSocket.on('connect', join)
     activeSocket.on('disconnect', disconnect)
     activeSocket.on('connect_error', connectionError)
+    activeSocket.on('socket_error', onSocketError)
+    activeSocket.on('user_blocked', onUserBlocked)
     activeSocket.on('new_message', receive)
     activeSocket.on('typing', onTyping)
     activeSocket.on('message_delivered', onDelivered)
@@ -288,6 +346,8 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
       activeSocket.off('connect', join)
       activeSocket.off('disconnect', disconnect)
       activeSocket.off('connect_error', connectionError)
+      activeSocket.off('socket_error', onSocketError)
+      activeSocket.off('user_blocked', onUserBlocked)
       activeSocket.off('new_message', receive)
       activeSocket.off('typing', onTyping)
       activeSocket.off('message_delivered', onDelivered)
@@ -298,13 +358,13 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
       clearTypingTimers()
       if (activeSocket.connected) activeSocket.emit('leave_room', { roomId })
     }
-  }, [roomId, socketRetry, patchMessage])
+  }, [roomId, socketRetry, patchMessage, isDirect, directContactId, markBlocked, refreshBlockedUsers])
 
   function updateDraft(text: string) {
     setDraft(text)
     const socket = getSocket()
     const now = performance.now()
-    if (joined && socket?.connected && text.trim() && now - lastTypingAt.current >= typingIntervalMs) {
+    if (joined && !blocked && socket?.connected && text.trim() && now - lastTypingAt.current >= typingIntervalMs) {
       lastTypingAt.current = now
       socket.volatile.emit('typing', { roomId })
     }
@@ -412,7 +472,8 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
     event.preventDefault()
     const text = draft.trim()
     const socket = getSocket()
-    if (!socket?.connected || !joined || (!text && !attachment) || text.length > maxMessageLength || sendRequest.current) return
+    if (!socket?.connected || !joined || blocked || socketBlockedRef.current
+      || (!text && !attachment) || text.length > maxMessageLength || sendRequest.current) return
 
     const controller = new AbortController()
     sendRequest.current = controller
@@ -425,6 +486,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
         if (controller.signal.aborted) return
         setAttachment({ file: attachment.file, uploaded: upload })
       }
+      if (socketBlockedRef.current) return
       if (!socket.connected) {
         setSendError('The chat connection was interrupted. Reconnect and try sending again.')
         return
@@ -438,6 +500,8 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
         setAttachment(undefined)
         setReplyTo((current) => current === replySource?.messageId ? undefined : current)
         if (stayAtLatest.current) jumpToLatest()
+      } else if (isDirect && result.error?.code === 'USER_BLOCKED') {
+        markBlocked()
       } else {
         setSendError(upload
           ? 'The server rejected the message with its attachment. Try again or choose a different file.'
@@ -462,8 +526,9 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
       patchMessage(messageId, { text: edited.text, editedAt: edited.editedAt })
     } else if (action === 'forward') {
       const socket = getSocket()
-      if (!socket?.connected || !joined) throw new ApiError('Reconnect to chat before forwarding.', 'SOCKET_UNAVAILABLE', 0)
+      if (!socket?.connected || !joined || blocked) throw new ApiError('Reconnect to chat before forwarding.', 'SOCKET_UNAVAILABLE', 0)
       const result = await socket.timeout(10_000).emitWithAck('forward_message', { targetRoomId: value, messageId })
+      if (result.error?.code === 'USER_BLOCKED') throw new ApiError(directContactUnavailable, 'USER_BLOCKED', 403)
       if (!result.success) throw new ApiError('Could not forward the message to that conversation.', 'FORWARD_FAILED', 0)
       setActionFeedback({ success: 'Message forwarded.' })
     } else {
@@ -497,7 +562,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
     setActionFeedback({})
     const socket = getSocket()
     try {
-      if (!socket?.connected || !joined) throw new Error()
+      if (!socket?.connected || !joined || blocked) throw new Error()
       const result = await socket.timeout(10_000).emitWithAck('react_message', { roomId, messageId, emoji })
       if (!result.success) throw new Error()
     } catch {
@@ -539,7 +604,20 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
             </ul>
           </details>
         )}
+        {directContact && blockedUsers && (
+          <BlockUserAction name={directContact.name || directContact.username} blocked={blockedByYou}
+            onChange={async (next) => {
+              if (await updateBlock(directContact, next)) markBlocked()
+              else retryConnection()
+            }} />
+        )}
       </div>
+      {directContact && blockListError && (
+        <div className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1">
+          <p role="alert" className="text-xs text-destructive">{blockListError}</p>
+          <Button type="button" size="sm" variant="ghost" onClick={refreshBlockedUsers}>Retry block status</Button>
+        </div>
+      )}
       {searchOpen && (
         <RoomSearch roomId={roomId} historyBusy={historyLoading || olderLoading}
           jumpError={jumpError} onSelect={(id) => void loadOlder(id)} resolveMessage={visibleMessage}
@@ -568,7 +646,9 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
           </div>
         )}
         {!historyLoading && !historyError && !visibleMessages.length && (
-          <p className="py-8 text-center text-sm text-muted-foreground">No messages yet. Say hello.</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {blocked ? 'No messages yet.' : 'No messages yet. Say hello.'}
+          </p>
         )}
         <ol ref={messageList} aria-label="Messages" className="space-y-4">
           {visibleMessages.map((message) => {
@@ -607,7 +687,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
                       {pinned && <Pin className="size-3" aria-label="Pinned" />}
                     </div>
                     {!message.deletedForEveryone && (
-                      <MessageMenu message={message} own={own} starred={starred} pinned={pinned} canPin={allowPin} joined={joined}
+                      <MessageMenu message={message} own={own} starred={starred} pinned={pinned} canPin={allowPin} joined={joined && !blocked}
                         onReply={() => {
                           setReplyTo(message.messageId)
                           composer.current?.focus()
@@ -646,17 +726,23 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
             <ArrowDown aria-hidden /> Jump to latest
           </Button>
         )}
+        {blocked && (
+          <div className="mb-2 flex flex-wrap items-center gap-1">
+            <p role="status" className="text-sm text-muted-foreground">
+              {blockedByYou ? 'You blocked this user. Unblock them to try messaging again.' : directContactUnavailable}
+            </p>
+            {!blockedByYou && !socketError && (
+              <Button type="button" size="sm" variant="ghost" onClick={retryConnection}>Check again</Button>
+            )}
+          </div>
+        )}
         {socketError ? (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <p role="alert" className="text-sm text-destructive">{socketError}</p>
-            <Button type="button" size="sm" variant="ghost" onClick={() => {
-              setJoined(false)
-              setSocketError('')
-              setSocketRetry((value) => value + 1)
-            }}>Retry connection</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={retryConnection}>Retry connection</Button>
           </div>
-        ) : !joined && <p role="status" className="mb-2 text-sm text-muted-foreground">Connecting to chat…</p>}
-        {sendError && <p role="alert" className="mb-2 text-sm text-destructive">{sendError}</p>}
+        ) : !joined && !blocked && <p role="status" className="mb-2 text-sm text-muted-foreground">Connecting to chat…</p>}
+        {sendError && !blocked && <p role="alert" className="mb-2 text-sm text-destructive">{sendError}</p>}
         {actionFeedback.error && <p role="alert" className="mb-2 text-sm text-destructive">{actionFeedback.error}</p>}
         {actionFeedback.success && <p role="status" className="mb-2 text-sm text-muted-foreground">{actionFeedback.success}</p>}
         {replySource && (
@@ -682,7 +768,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
           </div>
         )}
         <form className="flex items-center gap-1 sm:gap-2" onSubmit={sendMessage}>
-          <Input type="file" ref={filePicker} className="hidden" accept={attachmentAccept} aria-label="Choose an attachment"
+          <Input type="file" ref={filePicker} className="hidden" accept={attachmentAccept} disabled={blocked} aria-label="Choose an attachment"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0]
               event.currentTarget.value = ''
@@ -691,12 +777,12 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
               setSendError(error ?? '')
               if (!error) setAttachment({ file })
             }} />
-          <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 sm:size-9" aria-label="Attach a file" disabled={sending}
+          <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 sm:size-9" aria-label="Attach a file" disabled={sending || blocked}
             onClick={() => filePicker.current?.click()}><Paperclip aria-hidden /></Button>
           <Input ref={composer} aria-label="Message" placeholder="Write a message" value={draft} maxLength={maxMessageLength}
-            onChange={(event) => updateDraft(event.target.value)} autoComplete="off" />
+            onChange={(event) => updateDraft(event.target.value)} autoComplete="off" disabled={blocked} />
           <Button type="submit" variant="soft" className="w-8 shrink-0 px-0 sm:w-auto sm:px-4"
-            disabled={!joined || (!draft.trim() && !attachment) || sending}>
+            disabled={!joined || blocked || (!draft.trim() && !attachment) || sending}>
             <Send aria-hidden />
             <span className="sr-only sm:not-sr-only">{sending ? 'Sending…' : 'Send'}</span>
           </Button>
