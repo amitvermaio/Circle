@@ -1,9 +1,12 @@
 import rateLimit from "express-rate-limit";
 
+import { config } from "../config/config";
+
 function createAuthRateLimiter(limit: number, windowMs: number, message: string) {
   return rateLimit({
     windowMs,
     limit,
+    skip: () => config.NODE_ENV === "test",
     standardHeaders: "draft-8",
     legacyHeaders: false,
     handler: (_request, response) => {

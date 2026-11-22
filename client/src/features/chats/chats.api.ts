@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import type { RoomMessage } from '@/lib/socket'
 
 export type ChatUser = {
   userId: string
@@ -17,6 +18,15 @@ export type Room = {
 
 export function listRooms(signal: AbortSignal) {
   return api<{ rooms: Room[] }>('/api/v1/rooms', { signal })
+}
+
+export function listRoomMessages(roomId: string, signal: AbortSignal, cursor?: string) {
+  const query = new URLSearchParams({ limit: '30' })
+  if (cursor) query.set('cursor', cursor)
+  return api<{ messages: RoomMessage[]; nextCursor: string | null }>(
+    `/api/v1/rooms/${encodeURIComponent(roomId)}/messages?${query}`,
+    { signal },
+  )
 }
 
 export function searchUsers(query: string, signal: AbortSignal) {

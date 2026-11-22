@@ -11,7 +11,7 @@ async function startServer(): Promise<void> {
   await Promise.all([redisPublisher.connect(), redisSubscriber.connect()]);
 
   const httpServer = createServer(app);
-  initSocketServer(httpServer);
+  await initSocketServer(httpServer);
 
   httpServer.listen(config.PORT, () => {
     console.info(`Server listening on port ${config.PORT}`);

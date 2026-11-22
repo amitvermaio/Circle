@@ -43,8 +43,8 @@ export function logout(): Promise<{ message: string }> {
   return api('/api/v1/auth/logout', { method: 'POST' })
 }
 
-export function getCurrentUser(): Promise<{ user: AuthenticatedUser }> {
-  return api('/api/v1/auth/me')
+export function getCurrentUser(signal?: AbortSignal): Promise<{ user: AuthenticatedUser }> {
+  return api('/api/v1/auth/me', { signal })
 }
 
 export function updateProfile(input: Pick<AuthenticatedUser, 'name' | 'username'>): Promise<{ user: AuthenticatedUser }> {

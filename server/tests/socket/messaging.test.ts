@@ -49,6 +49,14 @@ describe("socket messaging", () => {
       const message = await received;
 
       expect(message).toMatchObject({ event: "new_message", roomId, senderId: sender.user.userId, text: "hello" });
+
+      const history = await api.get(`/api/v1/rooms/${roomId}/messages?limit=30`).set(bearer(receiver.token)).expect(200);
+      expect(history.body.data.messages).toEqual([expect.objectContaining({ messageId: message.messageId, text: "hello" })]);
+
+      const left = await senderSocket.timeout(2000).emitWithAck("leave_room", { roomId });
+      expect(left).toEqual({ success: true });
+      const afterLeave = await senderSocket.timeout(2000).emitWithAck("send_message", { roomId, text: "after leaving" });
+      expect(afterLeave).toEqual({ success: false });
     } finally {
       senderSocket.close();
       receiverSocket.close();

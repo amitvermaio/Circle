@@ -7,6 +7,7 @@ import { config } from "../config/config";
 import { redisPublisher, redisSubscriber } from "../config/redis";
 import { MessageModel } from "../models/message.model";
 import { RoomModel } from "../models/room.model";
+import { UserModel } from "../models/user.model";
 import { verifyMediaAttachments } from "../services/media.service";
 import type { MediaPayload } from "../validations/media.validation";
 import { roomMembershipPayloadSchema, type RoomMembershipPayload } from "../validations/room.validation";
@@ -42,10 +43,11 @@ const socketEventLimit = 30;
 
 interface ClientToServerEvents {
   forward_message: (payload: unknown) => void;
-  join_room: (payload: unknown) => void;
+  join_room: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
+  leave_room: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   message_read: (payload: unknown) => void;
   react_message: (payload: unknown) => void;
-  send_message: (payload: unknown) => void;
+  send_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   typing: (payload: unknown) => void;
 }
 
@@ -62,7 +64,7 @@ interface SocketData {
   userId: string;
 }
 
-export function initSocketServer(httpServer: HttpServer): Server<ClientToServerEvents, ServerToClientEvents, object, SocketData> {
+export async function initSocketServer(httpServer: HttpServer): Promise<Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>> {
   const io = new Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>(httpServer, {
     cors: {
       origin: config.FRONTEND_URL,
@@ -70,7 +72,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
     },
   });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth.token;
 
     if (typeof token !== "string") {
@@ -86,7 +88,21 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
         return;
       }
 
-      socket.data.userId = (payload as JwtPayload).userId;
+      const { userId, tokenVersion } = payload as JwtPayload;
+
+      if (typeof tokenVersion !== "number") {
+        next(new Error("UNAUTHORIZED"));
+        return;
+      }
+
+      const user = await UserModel.exists({ userId, tokenVersion });
+
+      if (!user) {
+        next(new Error("UNAUTHORIZED"));
+        return;
+      }
+
+      socket.data.userId = userId;
       next();
     } catch {
       next(new Error("UNAUTHORIZED"));
@@ -95,44 +111,81 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
 
   io.on("connection", (socket) => {
     void socket.join(getUserSocketRoom(socket.data.userId));
+    const pendingRoomJoins = new Map<string, AbortController>();
 
-    socket.on("join_room", async (payload) => {
+    socket.on("join_room", async (payload, acknowledge) => {
       if (!isSocketEventAllowed(socket.id, "join_room")) {
+        acknowledge?.({ success: false });
         return;
       }
 
       const validation = joinRoomSchema.safeParse(payload);
 
       if (!validation.success) {
+        acknowledge?.({ success: false });
         return;
       }
 
-      const room = await RoomModel.exists({
-        roomId: validation.data.roomId,
-        participants: socket.data.userId,
-      });
-
-      if (!room) {
-        return;
+      const { roomId } = validation.data;
+      const join = new AbortController();
+      pendingRoomJoins.get(roomId)?.abort();
+      pendingRoomJoins.set(roomId, join);
+      try {
+        const room = await RoomModel.exists({ roomId, participants: socket.data.userId });
+        if (!room || join.signal.aborted || !socket.connected) {
+          acknowledge?.({ success: false });
+          return;
+        }
+        await socket.join(roomId);
+        acknowledge?.({ success: true });
+      } catch (error) {
+        console.error("Failed to join chat room", error);
+        acknowledge?.({ success: false });
+      } finally {
+        if (pendingRoomJoins.get(roomId) === join) pendingRoomJoins.delete(roomId);
       }
-
-      await socket.join(validation.data.roomId);
     });
 
-    socket.on("send_message", async (payload) => {
+    socket.on("leave_room", async (payload, acknowledge) => {
+      const validation = joinRoomSchema.safeParse(payload);
+      if (!validation.success) {
+        acknowledge?.({ success: false });
+        return;
+      }
+      const { roomId } = validation.data;
+      pendingRoomJoins.get(roomId)?.abort();
+      pendingRoomJoins.delete(roomId);
+      await socket.leave(roomId);
+      acknowledge?.({ success: true });
+    });
+
+    socket.on("send_message", async (payload, acknowledge) => {
       if (!isSocketEventAllowed(socket.id, "send_message")) {
+        acknowledge?.({ success: false });
         return;
       }
 
       const joinedRoom = typeof payload === "object" && payload !== null && "roomId" in payload ? payload.roomId : undefined;
 
       if (typeof joinedRoom !== "string" || !socket.rooms.has(joinedRoom)) {
+        acknowledge?.({ success: false });
+        return;
+      }
+
+      const room = await RoomModel.exists({
+        roomId: joinedRoom,
+        participants: socket.data.userId,
+      });
+
+      if (!room) {
+        acknowledge?.({ success: false });
         return;
       }
 
       const validation = sendMessageSchema.safeParse(payload);
 
       if (!validation.success) {
+        acknowledge?.({ success: false });
         return;
       }
 
@@ -143,6 +196,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
         });
 
         if (!repliedToMessage) {
+          acknowledge?.({ success: false });
           return;
         }
       }
@@ -150,6 +204,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
       const media = await verifyMediaAttachments(socket.data.userId, validation.data.media);
 
       if (!media) {
+        acknowledge?.({ success: false });
         return;
       }
 
@@ -172,6 +227,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
       };
 
       await redisPublisher.publish(chatMessagesChannel, JSON.stringify(messagePayload));
+      acknowledge?.({ success: true });
     });
 
     socket.on("forward_message", async (payload) => {
@@ -455,9 +511,7 @@ export function initSocketServer(httpServer: HttpServer): Server<ClientToServerE
     }
   });
 
-  void redisSubscriber.subscribe(chatMessagesChannel, chatReceiptsChannel, chatRoomsChannel, chatTypingChannel).catch((error: unknown) => {
-    console.error("Failed to subscribe to chat messages", error);
-  });
+  await redisSubscriber.subscribe(chatMessagesChannel, chatReceiptsChannel, chatRoomsChannel, chatTypingChannel);
 
   return io;
 }

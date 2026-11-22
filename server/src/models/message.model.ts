@@ -39,6 +39,14 @@ const mediaAttachmentSchema = new Schema<MediaAttachment>(
   { _id: false },
 );
 
+const forwardedFromSchema = new Schema(
+  {
+    messageId: { type: String, required: true },
+    senderId: { type: String, required: true },
+  },
+  { _id: false },
+);
+
 const messageSchema = new Schema<Message>(
   {
     messageId: {
@@ -55,10 +63,7 @@ const messageSchema = new Schema<Message>(
     deletedFor: { type: [String], required: true, default: [] },
     deletedForEveryone: { type: Boolean, required: true, default: false },
     replyTo: { type: String },
-    forwardedFrom: {
-      messageId: { type: String, required: true },
-      senderId: { type: String, required: true },
-    },
+    forwardedFrom: { type: forwardedFromSchema, default: undefined },
     media: { type: [mediaAttachmentSchema], required: true, default: [] },
     reactions: { type: Map, of: [String], required: true, default: {} },
     // Per-recipient arrays support atomic $addToSet updates without trusting client status values.
