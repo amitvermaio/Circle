@@ -62,7 +62,7 @@ function ConfirmDialog({
       title={
         <span className="flex items-start gap-4">
           {tone === 'danger' && (
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-red-500/12 text-red-600 dark:text-red-400" aria-hidden="true">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full text-destructive" aria-hidden="true">
               <TriangleAlert className="size-5" />
             </span>
           )}
@@ -91,7 +91,7 @@ function ConfirmDialog({
       )}
 
       {error && (
-        <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="mt-4 text-sm text-destructive">
           {error}
         </p>
       )}

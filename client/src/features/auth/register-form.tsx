@@ -91,7 +91,7 @@ export function RegisterForm({ onRequested }: RegisterFormProps) {
       </Field>
       <Field label="Username" aside={<AvailabilityAside field="username" availability={usernameAvailability} />}
         hint={usernameAvailability.status === 'available'
-          ? <span role="status" className="text-green-700 dark:text-green-400">Username is available</span>
+          ? <span role="status" className="text-success">Username is available</span>
           : 'Use 3 to 20 lowercase letters, numbers, or underscores.'}
         error={fieldErrors.username?.[0] ?? usernameAvailability.error ?? (usernameAvailability.status === 'taken'
           ? <span role="status">Username already taken, choose another.</span> : undefined)}>

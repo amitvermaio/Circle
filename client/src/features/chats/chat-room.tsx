@@ -675,7 +675,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span tabIndex={0} role="img" aria-label={status}
-                              className={cn('inline-flex rounded focus-visible:outline-ring', status === 'Read' && 'text-blue-700 dark:text-blue-300')}>
+                              className={cn('inline-flex rounded focus-visible:outline-ring', status === 'Read' && 'text-brand')}>
                               {status === 'Sent' ? <CheckIcon className="size-4" aria-hidden /> : <ChecksIcon className="size-4" aria-hidden />}
                             </span>
                           </TooltipTrigger>

@@ -90,7 +90,7 @@ function Dialog({
   return createPortal(
     <div className="fixed inset-0 z-[100] grid place-items-center p-4" role="presentation">
       <div
-        className="absolute inset-0 bg-black/55 backdrop-blur-[6px] motion-safe:animate-chai-fade"
+        className="absolute inset-0 bg-scrim/65 backdrop-blur-[6px] motion-safe:animate-chai-fade"
         onClick={() => !busy && onClose()}
         aria-hidden="true"
       />

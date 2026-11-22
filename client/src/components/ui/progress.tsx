@@ -15,7 +15,7 @@ function Progress({ value = 0, max = 100, className, ...props }: React.Component
       data-slot="progress"
       value={value}
       max={max}
-      className={cn('relative h-1.5 w-full overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/10', className)}
+      className={cn('relative h-1.5 w-full overflow-hidden rounded-full bg-border', className)}
       {...props}
     >
       <ProgressPrimitive.Indicator className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} />

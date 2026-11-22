@@ -47,7 +47,7 @@ function Field({
         </p>
       )}
       {error && (
-        <p id={errorId} className="text-xs text-red-600 dark:text-red-400">
+        <p id={errorId} className="text-xs text-destructive">
           {error}
         </p>
       )}
@@ -62,7 +62,7 @@ function Fieldset({ legend, hint, error, className, children }: { legend: React.
       <legend className="mb-2.5 text-sm font-medium">{legend}</legend>
       {hint && !error && <p className="-mt-1.5 text-xs text-muted-foreground">{hint}</p>}
       {children}
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </fieldset>
   )
 }

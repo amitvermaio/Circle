@@ -42,7 +42,7 @@ export function AuthShell({
     <div className="flex min-h-dvh flex-col">
       <Backdrop />
       <header className="flex items-center justify-between px-6 py-5 sm:px-12">
-        <a href={homeHref} aria-label="Circle home" className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <a href={homeHref} aria-label="Circle home" className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring">
           <Logo />
         </a>
         <ThemeSwitcher />
@@ -52,14 +52,14 @@ export function AuthShell({
         <div className="w-full max-w-sm">
           <div className="mb-6 text-center">
             <h1 className="text-2xl font-medium tracking-tight sm:text-3xl">{title}</h1>
-            {description && <p className="mt-2 text-sm text-neutral-700 sm:text-base dark:text-neutral-400">{description}</p>}
+            {description && <p className="mt-2 text-sm text-muted-foreground sm:text-base">{description}</p>}
           </div>
           <div className="card-chai p-6 sm:p-8">{children}</div>
           {below && <p className="mt-6 text-center text-sm text-muted-foreground">{below}</p>}
         </div>
       </main>
 
-      <footer className="px-6 py-6 text-center font-montserrat text-[13px] text-gray-500">© {new Date().getFullYear()} Circle. All rights reserved.</footer>
+      <footer className="px-6 py-6 text-center font-montserrat text-[13px] text-muted-foreground">© {new Date().getFullYear()} Circle. All rights reserved.</footer>
     </div>
   )
 }
@@ -68,7 +68,7 @@ export function AuthShell({
 export function AuthLink({ className, ...props }: React.ComponentProps<'a'>) {
   return (
     <a
-      className={cn('font-medium text-foreground underline-offset-4 transition-colors duration-200 hover:text-brand hover:underline focus-visible:underline', className)}
+      className={cn('font-medium text-brand underline-offset-4 transition-colors duration-200 hover:underline focus-visible:underline', className)}
       {...props}
     />
   )
@@ -117,7 +117,7 @@ export function SubmitButton({ busy, busyLabel, children, disabled }: {
 export function FormError({ message }: { message?: string | null }) {
   if (!message) return null
   return (
-    <p role="alert" className="rounded-md border border-red-500/30 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+    <p role="alert" className="rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive">
       {message}
     </p>
   )

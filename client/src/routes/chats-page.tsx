@@ -147,7 +147,7 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
               <ul className="space-y-1 p-2">
                 {rooms.map((room) => (
                   <li key={room.roomId}>
-                    <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 px-2 py-2 text-left aria-[current=page]:bg-accent aria-[current=page]:text-accent-foreground">
+                    <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 px-2 py-2 text-left aria-[current=page]:bg-accent aria-[current=page]:text-brand">
                       <NavLink to={`/chats/${encodeURIComponent(room.roomId)}`} end>
                         <span className="grid size-9 shrink-0 place-items-center rounded-md border border-border" aria-hidden>
                           {room.type === 'group' ? <UsersIcon /> : <ChatCircleIcon />}
@@ -173,7 +173,7 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
         </aside>
         {roomId ? (
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-4">
+            <div className="forest-header flex shrink-0 items-center gap-2 border-b border-border px-4 py-4">
               <Button asChild variant="ghost" size="icon" className="md:hidden">
                 <Link to="/chats" aria-label="Back to chats"><ArrowLeftIcon aria-hidden /></Link>
               </Button>

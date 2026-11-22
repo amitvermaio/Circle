@@ -5,9 +5,7 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 /**
- * Radix's dropdown in the chaicode menu style: frosted glass, a warm hairline
- * on dark, no shadow, and the brand colour on the focused item's text (one
- * of the few places orange is allowed).
+ * Radix's dropdown with a themed surface and accent on the focused item.
  */
 const DropdownMenu = DropdownMenuPrimitive.Root
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
@@ -16,7 +14,7 @@ const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
 const DropdownMenuSub = DropdownMenuPrimitive.Sub
 
 const panel =
-  'z-50 min-w-[10rem] overflow-x-hidden overflow-y-auto rounded-lg border border-gray-400/20 bg-background/80 p-1.5 text-popover-foreground backdrop-blur-lg dark:border-orange-50/10 motion-safe:data-[state=open]:animate-chai-fade'
+  'z-50 min-w-[10rem] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-popover p-1.5 text-popover-foreground motion-safe:data-[state=open]:animate-chai-fade'
 
 const item =
   "relative flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-[15px] outline-none select-none transition-colors duration-150 focus:bg-accent/60 focus:text-brand data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"

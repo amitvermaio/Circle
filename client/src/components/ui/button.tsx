@@ -8,28 +8,25 @@ import { cn } from '@/lib/utils'
 /**
  * chaicode.com's buttons (ui/button.tsx and landing/hero.tsx).
  *
- * - `soft` is the default: the shadcn primary, light grey on dark. It is the
- *   button on cards ("View details", "Start").
- * - `solid` is the white one with asymmetric corners. Use it once per screen,
+ * - `soft` uses the primary action tokens with rounded corners.
+ * - `solid` is the primary action with asymmetric corners. Use it once per screen,
  *   for the main action. It carries ArrowUpRight unless `iconRight={null}`.
  * - `outline` mirrors the corners and sits beside `solid`.
  * - `danger` is only for the confirm button of a destructive action.
- *
- * There is no colour prop on purpose: orange never fills a button.
  */
 const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 text-sm font-medium whitespace-nowrap transition-colors duration-200 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 text-sm font-medium whitespace-nowrap transition-colors duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        soft: 'rounded-md bg-primary font-semibold text-primary-foreground hover:bg-primary/90',
-        solid: 'btn-asym bg-primary text-primary-foreground hover:bg-primary/90',
+        soft: 'rounded-md bg-primary font-semibold text-primary-foreground hover:bg-primary-hover',
+        solid: 'btn-asym bg-primary text-primary-foreground hover:bg-primary-hover',
         outline:
-          'btn-asym-mirror border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground',
+          'btn-asym-mirror border border-brand bg-transparent text-brand hover:bg-accent',
         muted:
-          'rounded-md bg-[#d4d4d866] font-montserrat text-[#52525b] hover:bg-[#d4d4d8] dark:bg-[#71717a33] dark:text-[#d4d4d8] dark:hover:bg-black/70',
-        ghost: 'rounded-md text-foreground hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
-        danger: 'rounded-md bg-red-600 font-semibold text-white hover:bg-red-600/90 dark:bg-red-500 dark:hover:bg-red-500/90',
+          'rounded-md bg-muted font-montserrat text-muted-foreground hover:bg-accent hover:text-brand',
+        ghost: 'rounded-md text-foreground hover:bg-accent hover:text-brand',
+        danger: 'rounded-md bg-danger font-semibold text-danger-foreground hover:bg-danger-hover',
       },
       size: {
         sm: 'h-8 gap-1.5 px-3',

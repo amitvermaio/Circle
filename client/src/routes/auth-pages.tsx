@@ -10,7 +10,7 @@ type SignInProps = { onSignIn: (result: AuthResponse) => void }
 
 export function LoginPage({ onSignIn }: SignInProps) {
   return (
-    <AuthShell title="Welcome back" description="Log in to continue your conversations." below={<><span>New here? </span><Link className="font-medium text-foreground underline-offset-4 hover:text-brand hover:underline" to="/register">Create an account</Link></>}>
+    <AuthShell title="Welcome back" description="Log in to continue your conversations." below={<><span>New here? </span><Link className="font-medium text-brand underline underline-offset-4" to="/register">Create an account</Link></>}>
       <LoginForm onSuccess={onSignIn} />
     </AuthShell>
   )
@@ -19,7 +19,7 @@ export function LoginPage({ onSignIn }: SignInProps) {
 export function RegisterPage() {
   const navigate = useNavigate()
   return (
-    <AuthShell title="Create your account" description="We will email you a verification code." below={<><span>Already have an account? </span><Link className="font-medium text-foreground underline-offset-4 hover:text-brand hover:underline" to="/login">Log in</Link></>}>
+    <AuthShell title="Create your account" description="We will email you a verification code." below={<><span>Already have an account? </span><Link className="font-medium text-brand underline underline-offset-4" to="/login">Log in</Link></>}>
       <RegisterForm onRequested={(email) => navigate('/verify-otp', { state: { email } })} />
     </AuthShell>
   )
@@ -34,7 +34,7 @@ export function VerifyOtpPage({ onSignIn }: SignInProps) {
   if (!email) {
     return (
       <AuthShell title="Verify your email" description="Start registration first, then enter the verification code we send.">
-        <Link className="font-medium text-foreground underline-offset-4 hover:text-brand hover:underline" to="/register">Go to registration</Link>
+        <Link className="font-medium text-brand underline underline-offset-4" to="/register">Go to registration</Link>
       </AuthShell>
     )
   }

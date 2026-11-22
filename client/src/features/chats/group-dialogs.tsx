@@ -39,7 +39,7 @@ function ContactPicker({ contacts, selected, onPick, disabled }: {
           {matches.map(({ userId, name, username }) => (
             <li key={userId}>
               <Button type="button" variant="ghost" aria-pressed={selected.includes(userId)} disabled={disabled}
-                className="h-auto w-full justify-start py-2 text-left aria-pressed:bg-accent" onClick={() => onPick(userId)}>
+                className="h-auto w-full justify-start py-2 text-left aria-pressed:bg-accent aria-pressed:text-brand" onClick={() => onPick(userId)}>
                 <span className="min-w-0">
                   <span className="block truncate">{name || username}</span>
                   <span className="block truncate text-xs text-muted-foreground">@{username}</span>

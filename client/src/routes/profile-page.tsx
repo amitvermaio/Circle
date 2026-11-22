@@ -16,7 +16,7 @@ type FieldErrors = Record<string, string[] | undefined>
 
 function FormMessage({ message, tone = 'error' }: { message: string | null; tone?: 'error' | 'success' }) {
   if (!message) return null
-  return <p role={tone === 'error' ? 'alert' : 'status'} className={tone === 'error' ? 'text-sm text-red-700 dark:text-red-400' : 'text-sm text-green-700 dark:text-green-400'}>{message}</p>
+  return <p role={tone === 'error' ? 'alert' : 'status'} className={tone === 'error' ? 'text-sm text-destructive' : 'text-sm text-success'}>{message}</p>
 }
 
 export function ProfilePage({ user, onUserChange }: { user: AuthenticatedUser; onUserChange: (user: AuthenticatedUser) => void }) {
