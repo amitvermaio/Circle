@@ -43,10 +43,10 @@ async function ensureDirectConnections(creatorId: string, memberIds: string[]): 
   }
 }
 
-async function publishMembership(roomId: string, userId: string, action: "join" | "leave"): Promise<void> {
+async function publishMembership(roomId: string, userId: string, action: "join" | "leave", notifyUserIds?: string[]): Promise<void> {
   await redisPublisher.publish(
     chatRoomsChannel,
-    JSON.stringify({ event: "update_membership", roomId, userId, action }),
+    JSON.stringify({ event: "update_membership", roomId, userId, action, notifyUserIds }),
   );
 }
 
@@ -194,7 +194,7 @@ export async function addRoomMember(request: Request, response: Response, next: 
     await ensureDirectConnections(request.user!.userId, [userId]);
     room.participants.push(userId);
     await room.save();
-    await publishMembership(room.roomId, userId, "join");
+    await publishMembership(room.roomId, userId, "join", room.participants);
 
     response.status(200).json({ success: true, data: { room: room.toJSON() } });
   } catch (error) {
@@ -236,7 +236,7 @@ export async function removeRoomMember(request: Request, response: Response, nex
     room.participants = room.participants.filter((participantId: string) => participantId !== userId);
     room.admins = room.admins.filter((adminId: string) => adminId !== userId);
     await room.save();
-    await publishMembership(room.roomId, userId, "leave");
+    await publishMembership(room.roomId, userId, "leave", room.participants);
 
     response.status(200).json({ success: true, data: { room: room.toJSON() } });
   } catch (error) {
@@ -319,7 +319,10 @@ export async function getRoom(request: Request, response: Response, next: NextFu
       throw createHttpError(404, "NOT_FOUND", "Room not found");
     }
 
-    response.status(200).json({ success: true, data: { room: room.toJSON() } });
+    const members = room.type === "group"
+      ? await UserModel.find({ userId: { $in: room.participants } }, { _id: 0, userId: 1, name: 1, username: 1 }).lean()
+      : undefined;
+    response.status(200).json({ success: true, data: { room: room.toJSON(), members } });
   } catch (error) {
     next(error);
   }

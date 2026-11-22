@@ -3,7 +3,6 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 're
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { getCurrentUser } from '@/features/auth/auth.api'
 import { ApiError, getAuthToken } from '@/lib/api'
 import { connectSocket, getSocket, type RoomMessage } from '@/lib/socket'
 import { cn } from '@/lib/utils'
@@ -21,7 +20,7 @@ function mergeMessages(current: RoomMessage[], incoming: RoomMessage[]) {
   return [...messages.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp) || a.messageId.localeCompare(b.messageId))
 }
 
-export function ChatRoom({ roomId, room }: { roomId: string; room?: Room }) {
+export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room: Room; currentUserId?: string }) {
   const [messages, setMessages] = useState<RoomMessage[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -31,7 +30,6 @@ export function ChatRoom({ roomId, room }: { roomId: string; room?: Room }) {
   const [joined, setJoined] = useState(false)
   const [socketError, setSocketError] = useState('')
   const [socketRetry, setSocketRetry] = useState(0)
-  const [currentUserId, setCurrentUserId] = useState<string>()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
@@ -40,16 +38,6 @@ export function ChatRoom({ roomId, room }: { roomId: string; room?: Room }) {
   const stayAtLatest = useRef(true)
   const olderRequest = useRef<AbortController | null>(null)
   const olderAnchor = useRef<{ element: HTMLElement; top: number } | null>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    void getCurrentUser(controller.signal).then(({ user }) => {
-      if (!controller.signal.aborted) setCurrentUserId(user.userId)
-    }).catch(() => {
-      // Sender labels still render if the profile request fails.
-    })
-    return () => controller.abort()
-  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -237,7 +225,7 @@ export function ChatRoom({ roomId, room }: { roomId: string; room?: Room }) {
         <ol aria-label="Messages" className="space-y-4">
           {messages.map((message) => {
             const own = message.senderId === currentUserId
-            const directUser = room?.directUser
+            const directUser = room.directUser
             const sender = own ? 'You' : directUser?.userId === message.senderId
               ? directUser.name || directUser.username : `Participant ${message.senderId.slice(-4)}`
             return (

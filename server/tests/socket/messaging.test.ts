@@ -30,6 +30,45 @@ describe("socket messaging", () => {
     await expect(connectSocket(server.url, user.token)).rejects.toBeDefined();
   });
 
+  it("updates existing group members when another member is added or removed", async () => {
+    const admin = await registerUser();
+    const member = await registerUser();
+    const invitee = await registerUser();
+    const headers = bearer(admin.token);
+
+    await api.post("/api/v1/rooms/groups").set(headers).send({ name: "Planning", memberIds: [member.user.userId] })
+      .expect(403).expect(({ body }) => expect(body.error.code).toBe("NOT_CONNECTED"));
+    for (const user of [member, invitee]) {
+      await api.post("/api/v1/rooms").set(headers).send({ otherUserId: user.user.userId }).expect(201);
+    }
+    const created = await api.post("/api/v1/rooms/groups").set(headers)
+      .send({ name: "Planning", memberIds: [member.user.userId] }).expect(201);
+    const roomId = created.body.data.room.roomId as string;
+    const roomPath = `/api/v1/rooms/${roomId}`;
+    const memberHeaders = bearer(member.token);
+    await api.patch(roomPath).set(memberHeaders).send({ name: "Denied" }).expect(404);
+    await api.patch(roomPath).set(headers).send({ name: "Studio", photoUrl: "https://example.com/group.jpg" }).expect(200);
+    const memberSocket = await connectSocket(server.url, member.token);
+
+    try {
+      const joined = new Promise<unknown>((resolve) => memberSocket.once("update_membership", resolve));
+      await api.post(`${roomPath}/members`).set(headers).send({ userId: invitee.user.userId }).expect(200);
+      expect(await joined).toMatchObject({ roomId, userId: invitee.user.userId, action: "join" });
+
+      const details = await api.get(roomPath).set(memberHeaders).expect(200);
+      expect(details.body.data.room).toMatchObject({ name: "Studio", photoUrl: "https://example.com/group.jpg" });
+      expect(details.body.data.members).toContainEqual({
+        userId: invitee.user.userId, name: invitee.user.name, username: invitee.user.username,
+      });
+      const left = new Promise<unknown>((resolve) => memberSocket.once("update_membership", resolve));
+      await api.delete(`${roomPath}/members/${invitee.user.userId}`).set(headers).expect(200);
+      expect(await left).toMatchObject({ roomId, userId: invitee.user.userId, action: "leave" });
+      await api.get(roomPath).set(bearer(invitee.token)).expect(404);
+    } finally {
+      memberSocket.close();
+    }
+  });
+
   it("fans out a persisted message without trusting a supplied sender identity", async () => {
     const sender = await registerUser();
     const receiver = await registerUser();

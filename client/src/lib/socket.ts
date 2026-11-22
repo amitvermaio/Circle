@@ -11,9 +11,13 @@ export type RoomMessage = {
 }
 
 type RoomPayload = { roomId: string }
+type MembershipUpdate = RoomPayload & { userId: string; action: 'join' | 'leave' }
 type Ack = (result: { success: boolean }) => void
 type ChatSocket = Socket<
-  { new_message: (message: RoomMessage) => void },
+  {
+    new_message: (message: RoomMessage) => void
+    update_membership: (update: MembershipUpdate) => void
+  },
   {
     join_room: (payload: RoomPayload, acknowledge: Ack) => void
     leave_room: (payload: RoomPayload) => void

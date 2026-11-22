@@ -11,6 +11,10 @@ export type Room = {
   roomId: string
   type: 'direct' | 'group'
   name?: string
+  photoUrl?: string
+  participants: string[]
+  admins: string[]
+  createdBy: string
   directUser?: ChatUser
   lastMessage?: { text?: string } | null
   unreadCount?: number
@@ -39,6 +43,30 @@ export function createDirectRoom(otherUserId: string) {
     method: 'POST',
     body: { otherUserId },
   })
+}
+
+function roomPath(roomId: string) {
+  return `/api/v1/rooms/${encodeURIComponent(roomId)}`
+}
+
+export function createGroup(name: string, memberIds: string[]) {
+  return api<{ room: Room }>('/api/v1/rooms/groups', { method: 'POST', body: { name, memberIds } })
+}
+
+export function getGroupMembers(roomId: string, signal: AbortSignal) {
+  return api<{ members: ChatUser[] }>(roomPath(roomId), { signal })
+}
+
+export function updateGroup(roomId: string, details: { name?: string; photoUrl?: string }) {
+  return api<{ room: Room }>(roomPath(roomId), { method: 'PATCH', body: details })
+}
+
+export function addGroupMember(roomId: string, userId: string) {
+  return api<{ room: Room }>(`${roomPath(roomId)}/members`, { method: 'POST', body: { userId } })
+}
+
+export function removeGroupMember(roomId: string, userId: string) {
+  return api<{ room: Room }>(`${roomPath(roomId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' })
 }
 
 export function roomName(room: Room) {

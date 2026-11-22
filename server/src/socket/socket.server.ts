@@ -481,14 +481,14 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
         const payload = roomMembershipPayloadSchema.safeParse(JSON.parse(rawMessage) as unknown);
 
         if (payload.success) {
-          const userSocketRoom = getUserSocketRoom(payload.data.userId);
-          io.to(userSocketRoom).emit("update_membership", payload.data);
+          const { notifyUserIds, ...membership } = payload.data;
+          const userSocketRoom = getUserSocketRoom(membership.userId);
 
-          if (payload.data.action === "join") {
-            io.in(userSocketRoom).socketsJoin(payload.data.roomId);
-          } else {
-            io.in(userSocketRoom).socketsLeave(payload.data.roomId);
+          if (membership.action === "leave") {
+            io.in(userSocketRoom).socketsLeave(membership.roomId);
           }
+          const recipients = [userSocketRoom, ...(notifyUserIds ?? []).map(getUserSocketRoom)];
+          io.to(recipients).emit("update_membership", membership);
         }
       } catch {
         // Ignore malformed membership updates; only validated messages affect socket rooms.

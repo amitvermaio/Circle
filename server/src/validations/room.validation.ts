@@ -38,6 +38,7 @@ export const roomMembershipPayloadSchema = z.object({
   roomId: roomParamsSchema.shape.roomId,
   userId: userIdSchema,
   action: z.enum(["join", "leave"]),
+  notifyUserIds: z.array(userIdSchema).optional(),
 });
 
 export type RoomMembershipPayload = z.infer<typeof roomMembershipPayloadSchema>;

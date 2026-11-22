@@ -1,15 +1,16 @@
-import { ArrowLeft, MessageCircle, MessagesSquare, UsersRound } from 'lucide-react'
+import { ArrowLeft, MessageCircle, MessagesSquare, Settings, UsersRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router'
 
 import { ThemeSwitcher } from '@/components/theme-switcher'
 import { Button } from '@/components/ui/button'
-import { logout } from '@/features/auth/auth.api'
+import { getCurrentUser, logout } from '@/features/auth/auth.api'
 import { ChatRoom } from '@/features/chats/chat-room'
 import { listRooms, roomName, type Room } from '@/features/chats/chats.api'
+import { GroupSettingsDialog, NewGroupDialog } from '@/features/chats/group-dialogs'
 import { NewChatDialog } from '@/features/chats/new-chat-dialog'
-import { ApiError, clearAuthToken } from '@/lib/api'
-import { disconnectSocket } from '@/lib/socket'
+import { ApiError, clearAuthToken, getAuthToken } from '@/lib/api'
+import { connectSocket, disconnectSocket } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 
 export function ChatsPage() {
@@ -20,14 +21,19 @@ export function ChatsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState<'direct' | 'group' | null>(null)
+  const [settingsRoomId, setSettingsRoomId] = useState<string>()
+  const [currentUserId, setCurrentUserId] = useState<string>()
   const selectedRoom = rooms.find((room) => room.roomId === roomId)
+  const contacts = [...new Map(rooms.flatMap((room) => room.type === 'direct' && room.directUser
+    ? [[room.directUser.userId, room.directUser] as const] : [])).values()]
 
   useEffect(() => {
     const controller = new AbortController()
     void listRooms(controller.signal).then(({ rooms: listed }) => {
       if (controller.signal.aborted) return
-      setRooms((current) => [...current.filter((room) => !listed.some(({ roomId }) => roomId === room.roomId)), ...listed])
+      setRooms(listed)
+      setError('')
       setLoading(false)
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return
@@ -37,12 +43,55 @@ export function ChatsPage() {
     return () => controller.abort()
   }, [attempt])
 
-  function openRoom(room: Room) {
+  useEffect(() => {
+    const controller = new AbortController()
+    void getCurrentUser(controller.signal).then(({ user }) => {
+      if (!controller.signal.aborted) setCurrentUserId(user.userId)
+    }).catch(() => { /* Admin actions stay hidden until identity is confirmed. */ })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    const token = getAuthToken()
+    if (!token) return
+    let socket: ReturnType<typeof connectSocket>
+    try {
+      socket = connectSocket(token)
+    } catch {
+      return
+    }
+    function refreshRooms() {
+      setAttempt((value) => value + 1)
+    }
+    function onMembership(update: { roomId: string; userId: string; action: 'join' | 'leave' }) {
+      if (update.action === 'leave' && update.userId === currentUserId) {
+        setRooms((current) => current.filter((room) => room.roomId !== update.roomId))
+        if (roomId === update.roomId) {
+          setSettingsRoomId(undefined)
+          navigate('/chats', { replace: true })
+        }
+      }
+      refreshRooms()
+    }
+    socket.on('connect', refreshRooms)
+    socket.on('update_membership', onMembership)
+    return () => {
+      socket.off('connect', refreshRooms)
+      socket.off('update_membership', onMembership)
+    }
+  }, [currentUserId, navigate, roomId])
+
+  function updateRoom(room: Room) {
     setRooms((current) => {
       if (!current.some((item) => item.roomId === room.roomId)) return [room, ...current]
       return current.map((item) => item.roomId === room.roomId ? { ...item, ...room } : item)
     })
-    setCreating(false)
+    setAttempt((value) => value + 1)
+  }
+
+  function openRoom(room: Room) {
+    updateRoom(room)
+    setCreating(null)
     navigate(`/chats/${encodeURIComponent(room.roomId)}`)
   }
 
@@ -76,9 +125,12 @@ export function ChatsPage() {
         roomId ? 'flex min-h-0 flex-1' : 'min-h-[28rem]',
       )}>
         <aside aria-label="Chat sidebar" className={roomId ? 'hidden overflow-y-auto border-border md:block md:border-r' : 'border-border md:border-r'}>
-          <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-4">
+          <div className="space-y-2 border-b border-border px-4 py-4">
             <h2 className="font-semibold">Conversations</h2>
-            <Button type="button" size="sm" variant="solid" onClick={() => setCreating(true)}>New chat</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="solid" onClick={() => setCreating('direct')}>New chat</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setCreating('group')}>New group</Button>
+            </div>
           </div>
           {loading && <p role="status" className="p-4 text-sm text-muted-foreground">Loading chats…</p>}
           {error && (
@@ -111,7 +163,7 @@ export function ChatsPage() {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{roomName(room)}</span>
                           <span className="block truncate text-xs text-muted-foreground">
-                            {room.lastMessage?.text || (room.type === 'group' ? 'Group chat' : room.directUser?.username ? `@${room.directUser.username}` : 'Direct chat')}
+                            {room.lastMessage?.text || (room.type === 'group' ? `${room.participants.length} members` : room.directUser?.username ? `@${room.directUser.username}` : 'Direct chat')}
                           </span>
                         </span>
                         {!!room.unreadCount && room.unreadCount > 0 && (
@@ -133,9 +185,16 @@ export function ChatsPage() {
               <Button asChild variant="ghost" size="icon" className="md:hidden">
                 <Link to="/chats" aria-label="Back to chats"><ArrowLeft aria-hidden /></Link>
               </Button>
-              <h2 className="min-w-0 truncate font-semibold">{selectedRoom ? roomName(selectedRoom) : 'Conversation'}</h2>
+              <h2 className="min-w-0 flex-1 truncate font-semibold">{selectedRoom ? roomName(selectedRoom) : 'Conversation'}</h2>
+              {selectedRoom?.type === 'group' && (
+                <Button type="button" variant="ghost" size="icon" aria-label="Group settings"
+                  onClick={() => setSettingsRoomId(roomId)}>
+                  <Settings aria-hidden />
+                </Button>
+              )}
             </div>
-            <ChatRoom key={roomId} roomId={roomId} room={selectedRoom} />
+            {selectedRoom ? <ChatRoom key={roomId} roomId={roomId} room={selectedRoom} currentUserId={currentUserId} />
+              : <p className="p-4 text-sm text-muted-foreground">{loading ? 'Loading conversation…' : error || 'Conversation unavailable.'}</p>}
           </section>
         ) : (
           <section className="hidden place-content-center justify-items-center gap-2 p-6 text-center md:grid">
@@ -145,7 +204,12 @@ export function ChatsPage() {
           </section>
         )}
       </div>
-      {creating && <NewChatDialog onClose={() => setCreating(false)} onOpenRoom={openRoom} />}
+      {creating === 'direct' && <NewChatDialog onClose={() => setCreating(null)} onOpenRoom={openRoom} />}
+      {creating === 'group' && <NewGroupDialog contacts={contacts} onClose={() => setCreating(null)} onRoomChanged={openRoom} />}
+      {settingsRoomId && selectedRoom?.type === 'group' && settingsRoomId === selectedRoom.roomId && (
+        <GroupSettingsDialog key={settingsRoomId} room={selectedRoom} currentUserId={currentUserId} contacts={contacts}
+          onClose={() => setSettingsRoomId(undefined)} onRoomChanged={updateRoom} />
+      )}
     </main>
   )
 }
