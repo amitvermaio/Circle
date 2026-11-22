@@ -8,6 +8,10 @@ export const usernameSchema = z
 
 export const usernameAvailabilitySchema = z.object({ username: usernameSchema });
 
+export const userSearchQuerySchema = z.object({
+  query: z.string().trim().min(1, "Search must not be empty").max(50, "Search must be at most 50 characters"),
+});
+
 export const updateProfileSchema = z
   .object({
     name: z.string().trim().min(1, "Name is required").max(100).optional(),

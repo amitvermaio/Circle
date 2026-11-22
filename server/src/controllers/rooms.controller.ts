@@ -277,7 +277,22 @@ export async function listRooms(request: Request, response: Response, next: Next
   try {
     const rooms = await RoomModel.find({ participants: request.user!.userId }).sort({ createdAt: -1 });
 
-    response.status(200).json({ success: true, data: { rooms: rooms.map((room) => room.toJSON()) } });
+    const directParticipantIds = rooms
+      .filter((room) => room.type === "direct")
+      .flatMap((room) => room.participants.filter((participantId: string) => participantId !== request.user!.userId));
+    const directUsers = await UserModel.find({ userId: { $in: directParticipantIds } }).select("userId name username").lean();
+    const directUsersById = new Map(directUsers.map((user) => [user.userId, user]));
+
+    response.status(200).json({
+      success: true,
+      data: {
+        rooms: rooms.map((room) => {
+          const otherUserId = room.type === "direct" ? room.participants.find((participantId: string) => participantId !== request.user!.userId) : undefined;
+          const directUser = otherUserId ? directUsersById.get(otherUserId) : undefined;
+          return { ...room.toJSON(), directUser: directUser ? { userId: directUser.userId, name: directUser.name, username: directUser.username } : undefined };
+        }),
+      },
+    });
   } catch (error) {
     next(error);
   }

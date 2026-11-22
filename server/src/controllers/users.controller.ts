@@ -1,7 +1,42 @@
 import type { Request, Response, NextFunction } from "express";
 
 import { UserModel } from "../models/user.model";
-import { updateProfileSchema, usernameAvailabilitySchema } from "../validations/user.validation";
+import { updateProfileSchema, usernameAvailabilitySchema, userSearchQuerySchema } from "../validations/user.validation";
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export async function searchUsers(request: Request, response: Response, next: NextFunction): Promise<void> {
+  const validation = userSearchQuerySchema.safeParse(request.query);
+
+  if (!validation.success) {
+    response.status(400).json({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "Invalid user search", details: validation.error.flatten() },
+    });
+    return;
+  }
+
+  try {
+    const query = new RegExp(`^${escapeRegex(validation.data.query)}`, "i");
+    const users = await UserModel.find({
+      userId: { $ne: request.user!.userId },
+      $or: [{ name: query }, { username: query }],
+    })
+      .select("userId name username")
+      .sort({ username: 1 })
+      .limit(20)
+      .lean();
+
+    response.status(200).json({
+      success: true,
+      data: { users: users.map(({ userId, name, username }) => ({ userId, name, username })) },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 export async function usernameAvailable(request: Request, response: Response, next: NextFunction): Promise<void> {
   const validation = usernameAvailabilitySchema.safeParse(request.query);
