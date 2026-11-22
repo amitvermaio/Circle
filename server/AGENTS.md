@@ -89,3 +89,11 @@ These rules apply only to work under `server/`.
 
 - Online and last-seen status.
 - Per-user settings, mute, and archive preferences.
+
+## Blocking
+
+- **Current:** `BlockModel` stores directional blocks with timestamps and a unique `(blockerId, blockedId)` index. Direct-contact checks use `isBlockedEitherWay`.
+- **Current:** Authenticated users can block and unblock with `POST /api/v1/users/:userId/block` and `DELETE /api/v1/users/:userId/block`. Both are idempotent. Invalid IDs and self-blocks return `VALIDATION_ERROR`.
+- **Current:** `GET /api/v1/users/me/blocked` returns only the caller's blocked users with public profile fields.
+- **Current:** A block in either direction rejects direct-room creation or reopening with HTTP 403 and `USER_BLOCKED`. It also rejects direct-room joins, sends, and forwards into a direct room with a `socket_error` event and an unsuccessful acknowledgement. Rejected messages are neither saved nor published.
+- **Current:** A new block publishes a validated `user_blocked` event on `chat:rooms` to both users' connected sockets. Blocking applies to direct contact only. Existing group membership and group messaging continue.

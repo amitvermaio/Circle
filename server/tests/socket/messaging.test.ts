@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MessageModel } from "../../src/models/message.model";
 import { api, bearer, registerUser } from "../helpers/api";
@@ -29,6 +29,85 @@ describe("socket messaging", () => {
     await api.post("/api/v1/auth/logout").set(bearer(user.token)).expect(200);
 
     await expect(connectSocket(server.url, user.token)).rejects.toBeDefined();
+  });
+
+  it("enforces blocks in both directions for direct rooms while allowing group messages", async () => {
+    const sender = await registerUser();
+    const receiver = await registerUser();
+    const senderId = sender.user.userId;
+    const receiverId = receiver.user.userId;
+    const headers = bearer(sender.token);
+    const receiverHeaders = bearer(receiver.token);
+    const blockPath = `/api/v1/users/${receiverId}/block`;
+    const createDirect = () => api.post("/api/v1/rooms").set(headers).send({ otherUserId: receiverId });
+    const expectBlocked = ({ body }: { body: { error: { code: string } } }) => expect(body.error.code).toBe("USER_BLOCKED");
+
+    await api.post(blockPath).expect(401);
+    await api.post("/api/v1/users/invalid/block").set(headers).expect(400);
+    await api.post(`/api/v1/users/${senderId}/block`).set(headers).expect(400);
+    await api.post(blockPath).set(headers).expect(200);
+    await api.post(blockPath).set(headers).expect(200);
+    await createDirect().expect(403).expect(expectBlocked);
+    await api.post("/api/v1/rooms").set(receiverHeaders).send({ otherUserId: senderId }).expect(403).expect(expectBlocked);
+    await api.get("/api/v1/users/me/blocked").set(headers).expect(200).expect(({ body }) => {
+      expect(body.data.users).toEqual([{ userId: receiverId, username: receiver.user.username, name: receiver.user.name }]);
+    });
+    await api.get("/api/v1/users/me/blocked").set(receiverHeaders).expect(200)
+      .expect(({ body }) => expect(body.data.users).toEqual([]));
+    await api.delete(blockPath).set(headers).expect(200);
+    await api.delete(blockPath).set(headers).expect(200);
+
+    const direct = await createDirect().expect(201);
+    const roomId = direct.body.data.room.roomId as string;
+    const group = await api.post("/api/v1/rooms/groups").set(headers)
+      .send({ name: "Planning", memberIds: [receiverId] }).expect(201);
+    const groupId = group.body.data.room.roomId as string;
+    const senderSocket = await connectSocket(server.url, sender.token);
+    const receiverSocket = await connectSocket(server.url, receiver.token);
+    const blockedAck = { success: false, error: { code: "USER_BLOCKED" } };
+
+    try {
+      await joinRoom(senderSocket, roomId);
+      await joinRoom(receiverSocket, roomId);
+      const notified = Promise.all([senderSocket, receiverSocket].map((socket) =>
+        new Promise<unknown>((resolve) => socket.once("user_blocked", resolve))));
+      await api.post(blockPath).set(headers).expect(200);
+      for (const event of await notified) {
+        expect(event).toEqual({ event: "user_blocked", blockerId: senderId, blockedId: receiverId });
+      }
+      await createDirect().expect(403).expect(expectBlocked);
+
+      const broadcast = vi.fn();
+      senderSocket.on("new_message", broadcast);
+      const socketError = new Promise<unknown>((resolve) => receiverSocket.once("socket_error", resolve));
+      for (const socket of [senderSocket, receiverSocket]) {
+        expect(await socket.timeout(2_000).emitWithAck("send_message", { roomId, text: "Blocked send" })).toMatchObject(blockedAck);
+        expect(await socket.timeout(2_000).emitWithAck("join_room", { roomId })).toMatchObject(blockedAck);
+        expect(socket.connected).toBe(true);
+      }
+      expect(await socketError).toMatchObject({ roomId, ...blockedAck });
+      expect(await MessageModel.countDocuments({ roomId })).toBe(0);
+      expect(broadcast).not.toHaveBeenCalled();
+
+      await joinRoom(senderSocket, groupId);
+      await joinRoom(receiverSocket, groupId);
+      const received = new Promise<unknown>((resolve) => senderSocket.once("new_message", resolve));
+      expect(await receiverSocket.timeout(2_000).emitWithAck("send_message", { roomId: groupId, text: "Group message" }))
+        .toEqual({ success: true });
+      expect(await received).toMatchObject({ roomId: groupId, text: "Group message" });
+      const message = await MessageModel.findOne({ roomId: groupId });
+      expect(await receiverSocket.timeout(2_000).emitWithAck("forward_message", { targetRoomId: roomId, messageId: message!.messageId }))
+        .toMatchObject(blockedAck);
+      expect(await MessageModel.countDocuments({ roomId })).toBe(0);
+
+      await api.delete(blockPath).set(headers).expect(200);
+      await joinRoom(receiverSocket, roomId);
+      expect(await receiverSocket.timeout(2_000).emitWithAck("send_message", { roomId, text: "Unblocked send" }))
+        .toEqual({ success: true });
+    } finally {
+      senderSocket.close();
+      receiverSocket.close();
+    }
   });
 
   it("updates existing group members when another member is added or removed", async () => {

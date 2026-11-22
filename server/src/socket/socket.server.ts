@@ -5,10 +5,12 @@ import { Server } from "socket.io";
 
 import { config } from "../config/config";
 import { redisPublisher, redisSubscriber } from "../config/redis";
+import { isBlockedEitherWay } from "../models/block.model";
 import { MessageModel } from "../models/message.model";
-import { RoomModel } from "../models/room.model";
+import { RoomModel, type Room } from "../models/room.model";
 import { UserModel } from "../models/user.model";
 import { verifyMediaAttachments } from "../services/media.service";
+import { userBlockedPayloadSchema, type UserBlockedPayload } from "../validations/block.validation";
 import type { MediaPayload } from "../validations/media.validation";
 import { roomMembershipPayloadSchema, type RoomMembershipPayload } from "../validations/room.validation";
 import {
@@ -42,18 +44,23 @@ const socketEventWindows = new Map<string, { startedAt: number; count: number }>
 const socketEventWindowMs = 10_000;
 const socketEventLimit = 30;
 
+const blockedError = { code: "USER_BLOCKED", message: "Direct contact is unavailable between these users" } as const;
+type SocketAck = (result: { success: boolean; error?: typeof blockedError }) => void;
+
 interface ClientToServerEvents {
-  forward_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
-  join_room: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
+  forward_message: (payload: unknown, acknowledge?: SocketAck) => void;
+  join_room: (payload: unknown, acknowledge?: SocketAck) => void;
   leave_room: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   message_delivered: (payload: unknown) => void;
   message_read: (payload: unknown) => void;
   react_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
-  send_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
+  send_message: (payload: unknown, acknowledge?: SocketAck) => void;
   typing: (payload: unknown) => void;
 }
 
 interface ServerToClientEvents {
+  user_blocked: (payload: UserBlockedPayload) => void;
+  socket_error: (payload: { roomId: string; success: false; error: typeof blockedError }) => void;
   update_membership: (payload: RoomMembershipPayload) => void;
   new_message: (payload: ChatMessagePayload) => void;
   message_reacted: (payload: MessageReactionPayload) => void;
@@ -117,6 +124,12 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
     void socket.join(getUserSocketRoom(socket.data.userId));
     const pendingRoomJoins = new Map<string, AbortController>();
 
+    function rejectBlocked(roomId: string, acknowledge?: SocketAck): void {
+      const result = { success: false, error: blockedError } as const;
+      socket.emit("socket_error", { roomId, ...result });
+      acknowledge?.(result);
+    }
+
     socket.on("join_room", async (payload, acknowledge) => {
       if (!isSocketEventAllowed(socket.id, "join_room")) {
         acknowledge?.({ success: false });
@@ -135,11 +148,17 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
       pendingRoomJoins.get(roomId)?.abort();
       pendingRoomJoins.set(roomId, join);
       try {
-        const room = await RoomModel.exists({ roomId, participants: socket.data.userId });
+        const room = await RoomModel.findOne({ roomId, participants: socket.data.userId }).select("type participants");
         if (!room || join.signal.aborted || !socket.connected) {
           acknowledge?.({ success: false });
           return;
         }
+        const blocked = await isDirectRoomBlocked(room, socket.data.userId);
+        if (join.signal.aborted || !socket.connected) {
+          acknowledge?.({ success: false });
+          return;
+        }
+        if (blocked) return rejectBlocked(roomId, acknowledge);
         await socket.join(roomId);
         acknowledge?.({ success: true });
       } catch (error) {
@@ -176,10 +195,10 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
         return;
       }
 
-      const room = await RoomModel.exists({
+      const room = await RoomModel.findOne({
         roomId: joinedRoom,
         participants: socket.data.userId,
-      });
+      }).select("type participants");
 
       if (!room) {
         acknowledge?.({ success: false });
@@ -213,6 +232,8 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
         acknowledge?.({ success: false });
         return;
       }
+
+      if (await isDirectRoomBlocked(room, socket.data.userId)) return rejectBlocked(joinedRoom, acknowledge);
 
       const message = await MessageModel.create({
         roomId: validation.data.roomId,
@@ -259,11 +280,14 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
 
       const [sourceRoom, targetRoom] = await Promise.all([
         RoomModel.exists({ roomId: sourceMessage.roomId, participants: socket.data.userId }),
-        RoomModel.exists({ roomId: validation.data.targetRoomId, participants: socket.data.userId }),
+        RoomModel.findOne({ roomId: validation.data.targetRoomId, participants: socket.data.userId }).select("type participants"),
       ]);
 
       if (!sourceRoom || !targetRoom) {
         return void acknowledge?.({ success: false });
+      }
+      if (await isDirectRoomBlocked(targetRoom, socket.data.userId)) {
+        return rejectBlocked(validation.data.targetRoomId, acknowledge);
       }
 
       const forwardedFrom = sourceMessage.forwardedFrom ?? {
@@ -507,7 +531,14 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
 
     if (channel === chatRoomsChannel) {
       try {
-        const payload = roomMembershipPayloadSchema.safeParse(JSON.parse(rawMessage) as unknown);
+        const rawPayload = JSON.parse(rawMessage) as unknown;
+        const blocked = userBlockedPayloadSchema.safeParse(rawPayload);
+        if (blocked.success) {
+          const { blockerId, blockedId } = blocked.data;
+          io.to([getUserSocketRoom(blockerId), getUserSocketRoom(blockedId)]).emit("user_blocked", blocked.data);
+          return;
+        }
+        const payload = roomMembershipPayloadSchema.safeParse(rawPayload);
 
         if (payload.success) {
           const { notifyUserIds, ...membership } = payload.data;
@@ -547,6 +578,15 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
 
 function getUserSocketRoom(userId: string): string {
   return `user:${userId}`;
+}
+
+async function isDirectRoomBlocked(room: Pick<Room, "type" | "participants">, userId: string): Promise<boolean> {
+  // Blocking applies only to direct contact. Existing group membership and group messages stay available.
+  if (room.type === "group") return false;
+  for (const participant of room.participants) {
+    if (participant !== userId && await isBlockedEitherWay(userId, participant)) return true;
+  }
+  return false;
 }
 
 function toMediaPayload(media: Iterable<{ url: string; type: string; size: number }>): MediaPayload[] {

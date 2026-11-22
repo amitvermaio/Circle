@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 
 import { config } from "../config/config";
 import { redisPublisher } from "../config/redis";
+import { isBlockedEitherWay } from "../models/block.model";
 import { RoomModel } from "../models/room.model";
 import { UserModel } from "../models/user.model";
 import {
@@ -62,7 +63,7 @@ export async function createRoom(request: Request, response: Response, next: Nex
   }
 
   const userId = request.user!.userId;
-  const { otherUserId } = validation.data;
+  const otherUserId = validation.data.otherUserId.toLowerCase();
 
   if (otherUserId === userId) {
     response.status(400).json({
@@ -73,6 +74,9 @@ export async function createRoom(request: Request, response: Response, next: Nex
   }
 
   try {
+    if (await isBlockedEitherWay(userId, otherUserId)) {
+      throw createHttpError(403, "USER_BLOCKED", "Direct contact is unavailable between these users");
+    }
     const participantKey = getParticipantKey(userId, otherUserId);
     const existingRoom = await RoomModel.findOne({ participantKey });
 

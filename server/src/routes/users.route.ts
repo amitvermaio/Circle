@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { blockUser, listBlockedUsers, unblockUser } from "../controllers/block.controller";
 import { listStars } from "../controllers/message-actions.controller";
 
 import { searchUsers, updateProfile, usernameAvailable } from "../controllers/users.controller";
@@ -11,3 +12,6 @@ usersRouter.get("/username-available", usernameAvailabilityRateLimiter, username
 usersRouter.get("/search", authenticate, searchUsers);
 usersRouter.patch("/me", authenticate, updateProfile);
 usersRouter.get("/me/starred", authenticate, listStars);
+usersRouter.get("/me/blocked", authenticate, listBlockedUsers);
+usersRouter.post("/:userId/block", authenticate, blockUser);
+usersRouter.delete("/:userId/block", authenticate, unblockUser);
