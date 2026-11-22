@@ -1,13 +1,10 @@
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 
-import { config } from "../config/config";
 import { sendMail } from "./mail.service";
 
-export function generateOtp(): string {
-  if (config.devFixedOtp && config.NODE_ENV !== "production") {
-    return config.devFixedOtp;
-  }
+export const registrationOtpLifetimeMinutes = 10;
 
+export function generateOtp(): string {
   return randomInt(0, 1_000_000).toString().padStart(6, "0");
 }
 
@@ -25,7 +22,10 @@ export function verifyOtp(otp: string, otpHash: string): boolean {
 export async function sendRegistrationOtp(email: string, otp: string): Promise<void> {
   await sendMail({
     to: email,
-    subject: "Verify your Distributed Chat account",
-    html: `<p>Your verification code is <strong>${otp}</strong>.</p>`,
+    subject: "Your Distributed Chat verification code",
+    html: `<h1>Verify your Distributed Chat account</h1>
+<p>Enter this six-digit code to finish creating your account:</p>
+<p style="font-size: 24px; letter-spacing: 0.15em"><strong>${otp}</strong></p>
+<p>This code expires in ${registrationOtpLifetimeMinutes} minutes.</p>`,
   });
 }

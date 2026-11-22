@@ -4,6 +4,7 @@ import { PendingRegistrationModel } from "../../src/models/pendingRegistration.m
 import { UserModel } from "../../src/models/user.model";
 import { api, bearer, registerUser } from "../helpers/api";
 import { clearDatabase, connectTestDatabase } from "../helpers/db";
+import { takeRegistrationOtp } from "../helpers/mail";
 
 const requestOtp = "/api/v1/auth/register/request-otp";
 const verifyOtp = "/api/v1/auth/register/verify-otp";
@@ -64,12 +65,11 @@ describe("authentication and rooms", () => {
 
   it("returns a username conflict and cleans up the losing pending registration", async () => {
     const secondEmail = "second@example.com";
-    const otp = process.env.DEV_FIXED_OTP;
     await api.post(requestOtp).send(registration).expect(202);
     await api.post(requestOtp).send({ ...registration, email: secondEmail }).expect(202);
 
-    await api.post(verifyOtp).send({ email: registration.email, otp }).expect(201);
-    const response = await api.post(verifyOtp).send({ email: secondEmail, otp }).expect(409);
+    await api.post(verifyOtp).send({ email: registration.email, otp: takeRegistrationOtp(registration.email) }).expect(201);
+    const response = await api.post(verifyOtp).send({ email: secondEmail, otp: takeRegistrationOtp(secondEmail) }).expect(409);
     expect(response.body).toEqual({
       success: false,
       error: {
@@ -86,7 +86,8 @@ describe("authentication and rooms", () => {
     await UserModel.create({
       name: "Existing User", email: registration.email, username: "existing_user", passwordHash: "test-only-hash",
     });
-    const response = await api.post(verifyOtp).send({ email: registration.email, otp: process.env.DEV_FIXED_OTP }).expect(409);
+    const response = await api.post(verifyOtp)
+      .send({ email: registration.email, otp: takeRegistrationOtp(registration.email) }).expect(409);
     expect(response.body).toEqual({
       success: false, error: { code: "EMAIL_TAKEN", message: "Email is already registered." },
     });

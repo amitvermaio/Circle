@@ -6,7 +6,7 @@ import { mongo } from "mongoose";
 import { config } from "../config/config";
 import { PendingRegistrationModel } from "../models/pendingRegistration.model";
 import { UserModel, type UserDocument } from "../models/user.model";
-import { generateOtp, hashOtp, sendRegistrationOtp, verifyOtp } from "../services/otp.service";
+import { generateOtp, hashOtp, registrationOtpLifetimeMinutes, sendRegistrationOtp, verifyOtp } from "../services/otp.service";
 import { changePasswordSchema, loginSchema, registerSchema, verifyRegistrationOtpSchema } from "../validations/auth.validation";
 
 interface HttpError extends Error {
@@ -58,7 +58,7 @@ export async function requestRegistrationOtp(request: Request, response: Respons
           username,
           passwordHash: await bcrypt.hash(password, 12),
           otpHash: hashOtp(otp),
-          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+          expiresAt: new Date(Date.now() + registrationOtpLifetimeMinutes * 60 * 1000),
           attempts: 0,
         },
       },

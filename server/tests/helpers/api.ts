@@ -1,6 +1,7 @@
 import request from "supertest";
 
 import { app } from "../../src/app";
+import { takeRegistrationOtp } from "./mail";
 
 export const api = request(app);
 
@@ -24,7 +25,7 @@ export async function registerUser(): Promise<TestUser> {
   await api.post("/api/v1/auth/register/request-otp").send(registration).expect(202);
   const verification = await api
     .post("/api/v1/auth/register/verify-otp")
-    .send({ email: registration.email, otp: process.env.DEV_FIXED_OTP })
+    .send({ email: registration.email, otp: takeRegistrationOtp(registration.email) })
     .expect(201);
 
   return verification.body.data as TestUser;

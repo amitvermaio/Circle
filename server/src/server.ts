@@ -4,6 +4,7 @@ import { app } from "./app";
 import { config } from "./config/config";
 import { connectToDatabase } from "./config/mongodb";
 import { redisPublisher, redisSubscriber } from "./config/redis";
+import { verifyMailTransport } from "./services/mail.service";
 import { initSocketServer } from "./socket/socket.server";
 
 async function startServer(): Promise<void> {
@@ -15,6 +16,7 @@ async function startServer(): Promise<void> {
 
   httpServer.listen(config.PORT, () => {
     console.info(`Server listening on port ${config.PORT}`);
+    void verifyMailTransport();
   });
 }
 

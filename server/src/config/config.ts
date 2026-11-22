@@ -15,23 +15,11 @@ const environmentSchema = z.object({
   IMAGEKIT_URL_ENDPOINT: z.string().url("IMAGEKIT_URL_ENDPOINT must be a valid URL"),
   GROUP_ROOM_MAX_MEMBERS: z.coerce.number().int().min(2).max(1_000).default(256),
   SMTP_HOST: z.string().min(1).optional(),
-  SMTP_PORT: z.coerce.number().int().min(1).max(65_535).optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(465),
   SMTP_USER: z.string().min(1).optional(),
   SMTP_PASS: z.string().min(1).optional(),
-  // MAIL_FROM: z.string().min(1).optional(),
-  DEV_FIXED_OTP: z.string().regex(/^\d{6}$/, "DEV_FIXED_OTP must be a 6-digit string").optional(),
-}).superRefine((environment, context) => {
-  if (environment.NODE_ENV === "production" && environment.DEV_FIXED_OTP !== undefined) {
-    context.addIssue({
-      code: "custom",
-      message: "DEV_FIXED_OTP must not be set when NODE_ENV is production",
-      path: ["DEV_FIXED_OTP"],
-    });
-  }
-}).transform(({ DEV_FIXED_OTP, ...environment }) => ({
-  ...environment,
-  devFixedOtp: environment.NODE_ENV === "production" ? DEV_FIXED_OTP : DEV_FIXED_OTP ?? "000000",
-}));
+  MAIL_FROM: z.string().trim().min(1).optional(),
+});
 
 const parsedEnvironment = environmentSchema.safeParse(process.env);
 

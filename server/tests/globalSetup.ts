@@ -12,7 +12,6 @@ const testEnvironment = z.object({
   MONGO_URI: z.literal(mongoUri),
   REDIS_URL: z.literal(redisUrl),
   JWT_SECRET: z.string().min(32),
-  DEV_FIXED_OTP: z.string().regex(/^\d{6}$/),
   FRONTEND_URL: z.url(),
   PORT: z.coerce.number().int().min(1).max(65535),
 });
@@ -78,6 +77,7 @@ export default async function globalSetup(project: { provide: (key: "testEnv", v
       ...env,
       PORT: String(env.PORT),
       NODE_ENV: "test",
+      MAIL_FROM: "no-reply@example.com",
       IMAGEKIT_PUBLIC_KEY: "public_test_key",
       IMAGEKIT_PRIVATE_KEY: "private_test_key",
       IMAGEKIT_URL_ENDPOINT: "https://ik.imagekit.io/test",
