@@ -1,10 +1,19 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { PendingRegistrationModel } from "../../src/models/pendingRegistration.model";
+import { UserModel } from "../../src/models/user.model";
 import { api, bearer, registerUser } from "../helpers/api";
 import { clearDatabase, connectTestDatabase } from "../helpers/db";
 
+const requestOtp = "/api/v1/auth/register/request-otp";
+const verifyOtp = "/api/v1/auth/register/verify-otp";
+const registration = { name: "New User", username: "new_user", email: "new@example.com", password: "Password123" };
+
 describe("authentication and rooms", () => {
-  beforeAll(connectTestDatabase);
+  beforeAll(async () => {
+    await connectTestDatabase();
+    await UserModel.init();
+  });
   beforeEach(clearDatabase);
   afterAll(async () => {
     const mongoose = await import("mongoose");
@@ -24,6 +33,53 @@ describe("authentication and rooms", () => {
     const response = await api.post("/api/v1/auth/register/request-otp").send({}).expect(400);
 
     expect(response.body).toMatchObject({ success: false, error: { code: "VALIDATION_ERROR" } });
+  });
+
+  it("returns field-specific request errors before writing a pending registration", async () => {
+    const { user } = await registerUser();
+    for (const username of [registration.username, user.username]) {
+      const response = await api.post(requestOtp).send({ ...registration, email: user.email, username }).expect(409);
+      expect(response.body).toEqual({
+        success: false, error: { code: "EMAIL_TAKEN", message: "Email is already registered." },
+      });
+    }
+
+    const response = await api.post(requestOtp).send({ ...registration, username: user.username }).expect(409);
+    expect(response.body).toEqual({
+      success: false, error: { code: "USERNAME_TAKEN", message: "Username is already taken." },
+    });
+    expect(await PendingRegistrationModel.countDocuments()).toBe(0);
+  });
+
+  it("returns a username conflict and cleans up the losing pending registration", async () => {
+    const secondEmail = "second@example.com";
+    const otp = process.env.DEV_FIXED_OTP;
+    await api.post(requestOtp).send(registration).expect(202);
+    await api.post(requestOtp).send({ ...registration, email: secondEmail }).expect(202);
+
+    await api.post(verifyOtp).send({ email: registration.email, otp }).expect(201);
+    const response = await api.post(verifyOtp).send({ email: secondEmail, otp }).expect(409);
+    expect(response.body).toEqual({
+      success: false,
+      error: {
+        code: "USERNAME_TAKEN",
+        message: "Username was taken by someone else while you were verifying. Please register again with a different username.",
+      },
+    });
+    expect(await PendingRegistrationModel.exists({ email: secondEmail })).toBeNull();
+    expect(await UserModel.countDocuments({ username: registration.username })).toBe(1);
+  });
+
+  it("returns an email conflict and cleans up the pending registration", async () => {
+    await api.post(requestOtp).send(registration).expect(202);
+    await UserModel.create({
+      name: "Existing User", email: registration.email, username: "existing_user", passwordHash: "test-only-hash",
+    });
+    const response = await api.post(verifyOtp).send({ email: registration.email, otp: process.env.DEV_FIXED_OTP }).expect(409);
+    expect(response.body).toEqual({
+      success: false, error: { code: "EMAIL_TAKEN", message: "Email is already registered." },
+    });
+    expect(await PendingRegistrationModel.exists({ email: registration.email })).toBeNull();
   });
 
   it("requires a valid token for protected routes", async () => {

@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { mongo } from "mongoose";
 
 import { config } from "../config/config";
 import { PendingRegistrationModel } from "../models/pendingRegistration.model";
@@ -41,26 +42,29 @@ export async function requestRegistrationOtp(request: Request, response: Respons
 
   try {
     const { name, email, password, username } = validation.data;
-    const existingUser = await UserModel.exists({ $or: [{ email }, { username }] });
-
-    if (!existingUser) {
-      const otp = generateOtp();
-      await PendingRegistrationModel.findOneAndUpdate(
-        { email },
-        {
-          $set: {
-            name,
-            username,
-            passwordHash: await bcrypt.hash(password, 12),
-            otpHash: hashOtp(otp),
-            expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-            attempts: 0,
-          },
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
-      );
-      await sendRegistrationOtp(email, otp);
+    if (await UserModel.exists({ email })) {
+      throw createHttpError(409, "EMAIL_TAKEN", "Email is already registered.");
     }
+    if (await UserModel.exists({ username })) {
+      throw createHttpError(409, "USERNAME_TAKEN", "Username is already taken.");
+    }
+
+    const otp = generateOtp();
+    await PendingRegistrationModel.findOneAndUpdate(
+      { email },
+      {
+        $set: {
+          name,
+          username,
+          passwordHash: await bcrypt.hash(password, 12),
+          otpHash: hashOtp(otp),
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+          attempts: 0,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    await sendRegistrationOtp(email, otp);
 
     response.status(202).json({
       success: true,
@@ -102,12 +106,39 @@ export async function verifyRegistrationOtp(request: Request, response: Response
       throw createHttpError(400, "INVALID_OTP", "Verification code is invalid");
     }
 
-    const user = await UserModel.create({
-      name: pendingRegistration.name,
-      email: pendingRegistration.email,
-      username: pendingRegistration.username,
-      passwordHash: pendingRegistration.passwordHash,
-    });
+    let user: UserDocument;
+    try {
+      user = await UserModel.create({
+        name: pendingRegistration.name,
+        email: pendingRegistration.email,
+        username: pendingRegistration.username,
+        passwordHash: pendingRegistration.passwordHash,
+      });
+    } catch (error) {
+      if (!(error instanceof mongo.MongoServerError) || error.code !== 11000) throw error;
+
+      let conflict: HttpError;
+      if (error.keyPattern?.email === 1) {
+        conflict = createHttpError(409, "EMAIL_TAKEN", "Email is already registered.");
+      } else if (error.keyPattern?.username === 1) {
+        conflict = createHttpError(
+          409,
+          "USERNAME_TAKEN",
+          "Username was taken by someone else while you were verifying. Please register again with a different username.",
+        );
+      } else {
+        throw error;
+      }
+
+      // A new OTP request can replace the data without changing the pending record ID.
+      await PendingRegistrationModel.deleteOne({
+        _id: pendingRegistration._id,
+        username: pendingRegistration.username,
+        expiresAt: pendingRegistration.expiresAt,
+        otpHash: pendingRegistration.otpHash,
+      });
+      throw conflict;
+    }
     await PendingRegistrationModel.deleteOne({ _id: pendingRegistration._id });
 
     response.status(201).json({
