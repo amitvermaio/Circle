@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, UsersIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, SignOutIcon, UserCircleIcon, UsersIcon } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router'
 
@@ -170,17 +170,27 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
             </nav>
           )}
         </div>
-        <footer aria-label="Account" className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2">
-          {user.profilePhotoUrl ? (
-            <img src={user.profilePhotoUrl} alt="" className="size-8 shrink-0 rounded-full object-cover" />
-          ) : (
-            <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-full bg-accent text-xs font-semibold text-brand">
-              {Array.from(accountName)[0]?.toLocaleUpperCase()}
-            </span>
-          )}
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={accountName}>{accountName}</span>
-          <Button asChild variant="ghost" size="sm" className="px-2"><Link to="/profile">Profile</Link></Button>
-          <Button type="button" variant="ghost" size="sm" className="px-2" onClick={handleLogout} disabled={busy}>Log out</Button>
+        <footer aria-label="Account" className="shrink-0 space-y-2 border-t border-border px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            {user.profilePhotoUrl ? (
+              <img src={user.profilePhotoUrl} alt="" className="size-8 shrink-0 rounded-full object-cover" />
+            ) : (
+              <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-full bg-accent text-xs font-semibold text-brand">
+                {Array.from(accountName)[0]?.toLocaleUpperCase()}
+              </span>
+            )}
+            <span className="min-w-0 truncate text-sm font-semibold" title={accountName}>{accountName}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Button asChild variant="ghost" size="sm" className="gap-2 border border-border px-2">
+              <Link to="/profile"><UserCircleIcon className="size-4" aria-hidden />Profile</Link>
+            </Button>
+            <Button type="button" variant="ghost" size="sm"
+              className="gap-2 border border-border px-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={handleLogout} disabled={busy}>
+              <SignOutIcon className="size-4" aria-hidden />Log out
+            </Button>
+          </div>
         </footer>
       </aside>
       {roomId ? (
