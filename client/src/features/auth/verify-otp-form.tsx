@@ -2,15 +2,13 @@ import { useState, type FormEvent } from 'react'
 
 import { FormError, SubmitButton, TextInput } from '@/components/auth-shell'
 import { Field } from '@/components/ui/field'
-import { setAuthToken } from '@/lib/api'
-import { connectSocket } from '@/lib/socket'
 
-import { verifyRegistrationOtp } from './auth.api'
+import { verifyRegistrationOtp, type AuthResponse } from './auth.api'
 import { getErrorMessage } from './validation'
 
 type VerifyOtpFormProps = {
   email: string
-  onSuccess: () => void
+  onSuccess: (result: AuthResponse) => void
 }
 
 export function VerifyOtpForm({ email, onSuccess }: VerifyOtpFormProps) {
@@ -23,10 +21,7 @@ export function VerifyOtpForm({ email, onSuccess }: VerifyOtpFormProps) {
     setBusy(true)
     setError(null)
     try {
-      const result = await verifyRegistrationOtp(email, otp)
-      setAuthToken(result.token)
-      connectSocket(result.token)
-      onSuccess()
+      onSuccess(await verifyRegistrationOtp(email, otp))
     } catch (caught) {
       setError(getErrorMessage(caught))
     } finally {

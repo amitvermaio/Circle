@@ -48,7 +48,7 @@ export function logout(): Promise<{ message: string }> {
 }
 
 export function getCurrentUser(signal?: AbortSignal): Promise<{ user: AuthenticatedUser }> {
-  return api('/api/v1/auth/me', { signal })
+  return api('/api/v1/auth/me', { signal, redirectOnUnauthorized: false, cache: 'no-store' })
 }
 
 export function updateProfile(input: Pick<AuthenticatedUser, 'name' | 'username'>): Promise<{ user: AuthenticatedUser }> {

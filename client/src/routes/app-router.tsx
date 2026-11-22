@@ -1,25 +1,55 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 
-import { getAuthToken } from '@/lib/api'
+import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
+import { useAuthCheck } from '@/lib/use-auth-check'
 
 import { LoginPage, RegisterPage, VerifyOtpPage } from './auth-pages'
 import { ChatsPage } from './chats-page'
 import { ProfilePage } from './profile-page'
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  return getAuthToken() ? children : <Navigate to="/login" replace />
+type RouteGuardProps = { authenticated: boolean; children: React.ReactNode }
+
+function ProtectedRoute({ authenticated, children }: RouteGuardProps) {
+  return authenticated ? children : <Navigate to="/login" replace />
+}
+
+function GuestRoute({ authenticated, children }: RouteGuardProps) {
+  return authenticated ? <Navigate to="/chats" replace /> : children
 }
 
 export function AppRouter() {
+  const { session, signIn, signOut, updateUser, retry } = useAuthCheck()
+
+  if (session.status === 'checking') {
+    return <main className="grid min-h-dvh place-items-center"><Spinner label="Checking your session" /></main>
+  }
+
+  if (session.status === 'unavailable') {
+    return (
+      <main className="grid min-h-dvh place-content-center justify-items-center gap-2 px-4 text-center">
+        <p role="alert" className="text-sm text-muted-foreground">{session.message}</p>
+        <Button type="button" variant="outline" onClick={retry}>Retry session check</Button>
+      </main>
+    )
+  }
+
+  const user = session.status === 'authenticated' ? session.user : undefined
+  const authenticated = !!user
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/verify-otp" element={<VerifyOtpPage />} />
-        <Route path="/chats/:roomId?" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
-        <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<GuestRoute authenticated={authenticated}><LoginPage onSignIn={signIn} /></GuestRoute>} />
+        <Route path="/register" element={<GuestRoute authenticated={authenticated}><RegisterPage /></GuestRoute>} />
+        <Route path="/verify-otp" element={<GuestRoute authenticated={authenticated}><VerifyOtpPage onSignIn={signIn} /></GuestRoute>} />
+        <Route path="/chats/:roomId?" element={<ProtectedRoute authenticated={authenticated}>
+          {user && <ChatsPage currentUserId={user.userId} onLogout={signOut} />}
+        </ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute authenticated={authenticated}>
+          {user && <ProfilePage user={user} onUserChange={updateUser} />}
+        </ProtectedRoute>} />
+        <Route path="*" element={<Navigate to={authenticated ? '/chats' : '/login'} replace />} />
       </Routes>
     </BrowserRouter>
   )

@@ -4,17 +4,17 @@ import { Link, NavLink, useNavigate, useParams } from 'react-router'
 
 import { ThemeSwitcher } from '@/components/theme-switcher'
 import { Button } from '@/components/ui/button'
-import { getCurrentUser, logout } from '@/features/auth/auth.api'
+import { logout } from '@/features/auth/auth.api'
 import { ChatRoom } from '@/features/chats/chat-room'
 import { listRooms, roomName, type Room } from '@/features/chats/chats.api'
 import { GroupSettingsDialog, NewGroupDialog } from '@/features/chats/group-dialogs'
 import { NewChatDialog } from '@/features/chats/new-chat-dialog'
 import { StoriesStrip } from '@/features/stories/stories-strip'
-import { ApiError, clearAuthToken, getAuthToken } from '@/lib/api'
+import { ApiError, getAuthToken } from '@/lib/api'
 import { connectSocket, disconnectSocket } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 
-export function ChatsPage() {
+export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; onLogout: () => void }) {
   const navigate = useNavigate()
   const { roomId } = useParams()
   const [busy, setBusy] = useState(false)
@@ -24,7 +24,6 @@ export function ChatsPage() {
   const [attempt, setAttempt] = useState(0)
   const [creating, setCreating] = useState<'direct' | 'group' | null>(null)
   const [settingsRoomId, setSettingsRoomId] = useState<string>()
-  const [currentUserId, setCurrentUserId] = useState<string>()
   const selectedRoom = rooms.find((room) => room.roomId === roomId)
   const contacts = [...new Map(rooms.flatMap((room) => room.type === 'direct' && room.directUser
     ? [[room.directUser.userId, room.directUser] as const] : [])).values()]
@@ -43,14 +42,6 @@ export function ChatsPage() {
     })
     return () => controller.abort()
   }, [attempt])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    void getCurrentUser(controller.signal).then(({ user }) => {
-      if (!controller.signal.aborted) setCurrentUserId(user.userId)
-    }).catch(() => { /* Admin actions stay hidden until identity is confirmed. */ })
-    return () => controller.abort()
-  }, [])
 
   useEffect(() => {
     const token = getAuthToken()
@@ -104,8 +95,7 @@ export function ChatsPage() {
       // The local session still needs to end if the server token has expired.
     } finally {
       disconnectSocket()
-      clearAuthToken()
-      navigate('/login', { replace: true })
+      onLogout()
     }
   }
 

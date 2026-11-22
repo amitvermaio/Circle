@@ -2,13 +2,11 @@ import { useState, type FormEvent } from 'react'
 
 import { FormError, PasswordInput, SubmitButton, TextInput } from '@/components/auth-shell'
 import { Field } from '@/components/ui/field'
-import { connectSocket } from '@/lib/socket'
-import { setAuthToken } from '@/lib/api'
 
-import { login } from './auth.api'
+import { login, type AuthResponse } from './auth.api'
 import { getErrorMessage } from './validation'
 
-type LoginFormProps = { onSuccess: () => void }
+type LoginFormProps = { onSuccess: (result: AuthResponse) => void }
 
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const [email, setEmail] = useState('')
@@ -21,10 +19,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     setBusy(true)
     setError(null)
     try {
-      const result = await login({ email, password })
-      setAuthToken(result.token)
-      connectSocket(result.token)
-      onSuccess()
+      onSuccess(await login({ email, password }))
     } catch (caught) {
       setError(getErrorMessage(caught))
     } finally {

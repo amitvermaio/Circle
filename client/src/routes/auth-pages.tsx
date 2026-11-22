@@ -1,15 +1,17 @@
 import { Link, useLocation, useNavigate } from 'react-router'
 
 import { AuthShell } from '@/components/auth-shell'
+import type { AuthResponse } from '@/features/auth/auth.api'
 import { LoginForm } from '@/features/auth/login-form'
 import { RegisterForm } from '@/features/auth/register-form'
 import { VerifyOtpForm } from '@/features/auth/verify-otp-form'
 
-export function LoginPage() {
-  const navigate = useNavigate()
+type SignInProps = { onSignIn: (result: AuthResponse) => void }
+
+export function LoginPage({ onSignIn }: SignInProps) {
   return (
     <AuthShell title="Welcome back" description="Log in to continue your conversations." below={<><span>New here? </span><Link className="font-medium text-foreground underline-offset-4 hover:text-brand hover:underline" to="/register">Create an account</Link></>}>
-      <LoginForm onSuccess={() => navigate('/chats', { replace: true })} />
+      <LoginForm onSuccess={onSignIn} />
     </AuthShell>
   )
 }
@@ -25,8 +27,7 @@ export function RegisterPage() {
 
 type VerifyLocationState = { email?: string }
 
-export function VerifyOtpPage() {
-  const navigate = useNavigate()
+export function VerifyOtpPage({ onSignIn }: SignInProps) {
   const location = useLocation()
   const email = (location.state as VerifyLocationState | null)?.email
 
@@ -40,7 +41,7 @@ export function VerifyOtpPage() {
 
   return (
     <AuthShell title="Verify your email" description={`We sent a six-digit code to ${email}.`}>
-      <VerifyOtpForm email={email} onSuccess={() => navigate('/chats', { replace: true })} />
+      <VerifyOtpForm email={email} onSuccess={onSignIn} />
     </AuthShell>
   )
 }

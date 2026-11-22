@@ -30,6 +30,7 @@ type ApiOptions = Omit<RequestInit, 'body' | 'headers'> & {
   body?: unknown
   headers?: HeadersInit
   responseType?: 'envelope' | 'raw'
+  redirectOnUnauthorized?: boolean
 }
 
 const apiUrl = import.meta.env.VITE_API_URL
@@ -95,9 +96,9 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     const code = error?.code ?? 'REQUEST_FAILED'
     const message = error?.message ?? 'The request could not be completed.'
 
-    if (response.status === 401) {
+    if (response.status === 401 && token === getAuthToken()) {
       clearAuthToken()
-      redirectToLogin()
+      if (options.redirectOnUnauthorized !== false) redirectToLogin()
     }
 
     throw new ApiError(message, code, response.status, error?.details)

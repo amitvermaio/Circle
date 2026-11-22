@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 
 import { Backdrop } from '@/components/backdrop'
@@ -6,7 +6,7 @@ import { PasswordInput, TextInput } from '@/components/auth-shell'
 import { ThemeSwitcher } from '@/components/theme-switcher'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
-import { changePassword, getCurrentUser, type AuthenticatedUser, updateProfile } from '@/features/auth/auth.api'
+import { changePassword, type AuthenticatedUser, updateProfile } from '@/features/auth/auth.api'
 import { getErrorMessage, getFieldErrors } from '@/features/auth/validation'
 import { BlockedUsersPanel } from '@/features/blocking/blocked-users-panel'
 import { ApiError, setAuthToken } from '@/lib/api'
@@ -19,11 +19,9 @@ function FormMessage({ message, tone = 'error' }: { message: string | null; tone
   return <p role={tone === 'error' ? 'alert' : 'status'} className={tone === 'error' ? 'text-sm text-red-700 dark:text-red-400' : 'text-sm text-green-700 dark:text-green-400'}>{message}</p>
 }
 
-export function ProfilePage() {
-  const [user, setUser] = useState<AuthenticatedUser | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [name, setName] = useState('')
-  const [username, setUsername] = useState('')
+export function ProfilePage({ user, onUserChange }: { user: AuthenticatedUser; onUserChange: (user: AuthenticatedUser) => void }) {
+  const [name, setName] = useState(user.name)
+  const [username, setUsername] = useState(user.username)
   const [profileErrors, setProfileErrors] = useState<FieldErrors>({})
   const [profileMessage, setProfileMessage] = useState<string | null>(null)
   const [profileBusy, setProfileBusy] = useState(false)
@@ -32,23 +30,6 @@ export function ProfilePage() {
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null)
   const [passwordBusy, setPasswordBusy] = useState(false)
 
-  useEffect(() => {
-    let active = true
-    void getCurrentUser()
-      .then(({ user: currentUser }) => {
-        if (!active) return
-        setUser(currentUser)
-        setName(currentUser.name)
-        setUsername(currentUser.username)
-      })
-      .catch((error: unknown) => {
-        if (active) setLoadError(getErrorMessage(error))
-      })
-    return () => {
-      active = false
-    }
-  }, [])
-
   async function submitProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setProfileBusy(true)
@@ -56,7 +37,7 @@ export function ProfilePage() {
     setProfileMessage(null)
     try {
       const result = await updateProfile({ name, username })
-      setUser(result.user)
+      onUserChange(result.user)
       setName(result.user.name)
       setUsername(result.user.username)
       setProfileMessage('Profile saved.')
@@ -104,10 +85,7 @@ export function ProfilePage() {
           <p className="mt-2 text-sm text-muted-foreground">Manage your account details and password.</p>
         </div>
 
-        {loadError ? <FormMessage message={loadError} /> : null}
-        {!user && !loadError ? <p className="text-sm text-muted-foreground">Loading your profile.</p> : null}
-        {user ? (
-          <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-2">
             <section className="card-chai p-6 sm:p-8">
               <h2 className="font-montserrat text-lg font-semibold">Profile</h2>
               <p className="mt-2 text-sm text-muted-foreground">Signed in as {user.email}</p>
@@ -138,8 +116,7 @@ export function ProfilePage() {
               </form>
             </section>
             <BlockedUsersPanel />
-          </div>
-        ) : null}
+        </div>
       </main>
     </div>
   )
