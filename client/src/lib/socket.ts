@@ -10,11 +10,14 @@ export type RoomMessage = {
   replyTo?: string
   forwardedFrom?: { messageId: string; senderId: string }
   reactions?: Record<string, string[]>
+  deliveredTo?: string[]
+  readBy?: string[]
   deletedForEveryone?: boolean
   media?: { url: string }[]
 }
 
 type RoomPayload = { roomId: string }
+type MessagePayload = RoomPayload & { messageId: string }
 export type MessageUpdate = RoomPayload & {
   messageId: string
   action: 'edited' | 'deleted_for_me' | 'deleted_for_everyone'
@@ -31,6 +34,9 @@ type ChatSocket = Socket<
     message_reacted: (update: RoomPayload & { messageId: string; reactions: Record<string, string[]> }) => void
     pins_updated: (update: RoomPayload) => void
     update_membership: (update: MembershipUpdate) => void
+    typing: (update: RoomPayload & { senderId: string }) => void
+    message_delivered: (receipt: MessagePayload & { readerId: string }) => void
+    message_read: (receipt: MessagePayload & { readerId: string }) => void
   },
   {
     join_room: (payload: RoomPayload, acknowledge: Ack) => void
@@ -38,6 +44,9 @@ type ChatSocket = Socket<
     send_message: (payload: RoomPayload & { text: string; replyTo?: string }, acknowledge: Ack) => void
     forward_message: (payload: { targetRoomId: string; messageId: string }, acknowledge: Ack) => void
     react_message: (payload: RoomPayload & { messageId: string; emoji: string }, acknowledge: Ack) => void
+    typing: (payload: RoomPayload) => void
+    message_delivered: (payload: MessagePayload) => void
+    message_read: (payload: MessagePayload) => void
   }
 >
 

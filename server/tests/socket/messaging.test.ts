@@ -162,8 +162,26 @@ describe("socket messaging", () => {
 
       expect(message).toMatchObject({ event: "new_message", roomId, senderId: sender.user.userId, text: "hello" });
 
+      const typing = new Promise<unknown>((resolve) => senderSocket.once("typing", resolve));
+      receiverSocket.emit("typing", { roomId });
+      expect(await typing).toMatchObject({ roomId, senderId: receiver.user.userId });
+
+      const receipt = { roomId, messageId: message.messageId };
+      const delivered = new Promise<unknown>((resolve) => senderSocket.once("message_delivered", resolve));
+      receiverSocket.emit("message_delivered", receipt);
+      expect(await delivered).toMatchObject({ ...receipt, readerId: receiver.user.userId });
+      const messagePath = `/api/v1/rooms/${roomId}/messages/${message.messageId}`;
+      await api.get(messagePath).set(bearer(sender.token)).expect(200).expect(({ body }) => {
+        expect(body.data.message.deliveredTo).toEqual([receiver.user.userId]);
+        expect(body.data.message.readBy).toEqual([]);
+      });
+
+      const read = new Promise<unknown>((resolve) => senderSocket.once("message_read", resolve));
+      receiverSocket.emit("message_read", receipt);
+      expect(await read).toMatchObject({ ...receipt, readerId: receiver.user.userId });
+
       const history = await api.get(`/api/v1/rooms/${roomId}/messages?limit=30`).set(bearer(receiver.token)).expect(200);
-      expect(history.body.data.messages).toEqual([expect.objectContaining({ messageId: message.messageId, text: "hello" })]);
+      expect(history.body.data.messages).toEqual([expect.objectContaining({ messageId: message.messageId, text: "hello", readBy: [receiver.user.userId] })]);
 
       const left = await senderSocket.timeout(2000).emitWithAck("leave_room", { roomId });
       expect(left).toEqual({ success: true });

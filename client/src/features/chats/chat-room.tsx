@@ -1,8 +1,9 @@
-import { ArrowDown, Pin, Send, Star, X } from 'lucide-react'
+import { ArrowDown, Check, CheckCheck, Pin, Send, Star, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ApiError, getAuthToken } from '@/lib/api'
 import { connectSocket, getSocket, type MessageUpdate, type RoomMessage } from '@/lib/socket'
 import { cn } from '@/lib/utils'
@@ -11,8 +12,12 @@ import { getGroupMembers, listRoomMessages, type ChatUser, type Room } from './c
 import { actionError, maxMessageLength, MessageActionDialog, MessageMenu, MessageReactions, previewText,
   QuotedMessage, StarredMessagesDialog, type MessageAction } from './message-actions'
 import { deleteRoomMessage, editRoomMessage, listPinnedMessages, listStarredMessages, setMessagePin, setMessageStar } from './messages.api'
+import { useVisibleReads } from './use-visible-reads'
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+const typingIntervalMs = 1000
+const typingTimeoutMs = 3000
+type ReceiptStatus = 'delivered' | 'read'
 type MessageChange = Partial<RoomMessage> | null
 
 function mergeMessages(current: RoomMessage[], incoming: RoomMessage[]) {
@@ -50,11 +55,21 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   const [pinRevision, setPinRevision] = useState(0)
   const [pinError, setPinError] = useState('')
   const [groupMembers, setGroupMembers] = useState<ChatUser[]>([])
+  const [typingUsers, setTypingUsers] = useState<string[]>([])
+  const [receipts, setReceipts] = useState<Record<string, ReceiptStatus>>({})
+  const lastTypingAt = useRef(-Infinity)
+  const currentUserRef = useRef(currentUserId)
   const composer = useRef<HTMLInputElement>(null)
+  const messageList = useRef<HTMLOListElement>(null)
   const scrollport = useRef<HTMLDivElement>(null)
   const stayAtLatest = useRef(true)
   const olderRequest = useRef<AbortController | null>(null)
   const olderAnchor = useRef<{ element: HTMLElement; top: number } | null>(null)
+  useVisibleReads(roomId, joined, messageList)
+
+  useEffect(() => {
+    currentUserRef.current = currentUserId
+  }, [currentUserId])
   const rosterKey = room.type === 'group' ? room.participants.join(',') : null
   const allowPin = !!currentUserId && (room.type === 'direct' || room.admins.includes(currentUserId))
   const known = new Map([...pins, ...messages].map((message) => [message.messageId, message]))
@@ -64,6 +79,8 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   function nameFor(id: string) {
     return id === currentUserId ? 'You' : nameById.get(id) ?? `Participant ${id.slice(-4)}`
   }
+
+  const typingNames = typingUsers.filter((id) => id !== currentUserId).map(nameFor)
 
   function visibleMessage(message: RoomMessage) {
     const change = changes[message.messageId]
@@ -155,6 +172,8 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
     const activeSocket = socket
     let active = true
     let joinAttempt = 0
+    const typingTimers = new Map<string, number>()
+    const reportedDeliveries = new Set<string>()
 
     async function join() {
       const attempt = ++joinAttempt
@@ -175,11 +194,43 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
       setMessages((current) => current.some(({ messageId }) => messageId === message.messageId)
         ? current
         : mergeMessages(current, [message]))
+      if (activeSocket.connected && message.senderId !== currentUserRef.current && !reportedDeliveries.has(message.messageId)) {
+        reportedDeliveries.add(message.messageId)
+        // The server rejects self-receipts even before the current user's profile loads.
+        activeSocket.emit('message_delivered', { roomId, messageId: message.messageId })
+      }
+    }
+
+    function onTyping({ roomId: eventRoomId, senderId }: { roomId: string; senderId: string }) {
+      if (eventRoomId !== roomId) return
+      window.clearTimeout(typingTimers.get(senderId))
+      setTypingUsers((current) => current.includes(senderId) ? current : [...current, senderId])
+      typingTimers.set(senderId, window.setTimeout(() => {
+        typingTimers.delete(senderId)
+        setTypingUsers((current) => current.filter((id) => id !== senderId))
+      }, typingTimeoutMs))
+    }
+
+    function recordReceipt(event: { roomId: string; messageId: string }, status: ReceiptStatus) {
+      if (event.roomId !== roomId) return
+      setReceipts((current) => current[event.messageId] === 'read' || current[event.messageId] === status
+        ? current
+        : { ...current, [event.messageId]: status })
+    }
+
+    const onDelivered = (event: { roomId: string; messageId: string }) => recordReceipt(event, 'delivered')
+    const onRead = (event: { roomId: string; messageId: string }) => recordReceipt(event, 'read')
+
+    function clearTypingTimers() {
+      typingTimers.forEach((timer) => window.clearTimeout(timer))
+      typingTimers.clear()
     }
 
     function disconnect() {
       joinAttempt += 1
       setJoined(false)
+      clearTypingTimers()
+      setTypingUsers([])
     }
 
     function updateMessage(update: MessageUpdate) {
@@ -211,6 +262,9 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
     activeSocket.on('disconnect', disconnect)
     activeSocket.on('connect_error', connectionError)
     activeSocket.on('new_message', receive)
+    activeSocket.on('typing', onTyping)
+    activeSocket.on('message_delivered', onDelivered)
+    activeSocket.on('message_read', onRead)
     activeSocket.on('message_updated', updateMessage)
     activeSocket.on('message_reacted', updateReactions)
     activeSocket.on('pins_updated', updatePins)
@@ -222,12 +276,26 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
       activeSocket.off('disconnect', disconnect)
       activeSocket.off('connect_error', connectionError)
       activeSocket.off('new_message', receive)
+      activeSocket.off('typing', onTyping)
+      activeSocket.off('message_delivered', onDelivered)
+      activeSocket.off('message_read', onRead)
       activeSocket.off('message_updated', updateMessage)
       activeSocket.off('message_reacted', updateReactions)
       activeSocket.off('pins_updated', updatePins)
+      clearTypingTimers()
       if (activeSocket.connected) activeSocket.emit('leave_room', { roomId })
     }
   }, [roomId, socketRetry, patchMessage])
+
+  function updateDraft(text: string) {
+    setDraft(text)
+    const socket = getSocket()
+    const now = performance.now()
+    if (joined && socket?.connected && text.trim() && now - lastTypingAt.current >= typingIntervalMs) {
+      lastTypingAt.current = now
+      socket.volatile.emit('typing', { roomId })
+    }
+  }
 
   function trackScroll() {
     const panel = scrollport.current
@@ -410,18 +478,35 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
         {!historyLoading && !historyError && !visibleMessages.length && (
           <p className="py-8 text-center text-sm text-muted-foreground">No messages yet. Say hello.</p>
         )}
-        <ol aria-label="Messages" className="space-y-4">
+        <ol ref={messageList} aria-label="Messages" className="space-y-4">
           {visibleMessages.map((message) => {
             const own = message.senderId === currentUserId
             const starred = visibleStars.some(({ messageId }) => messageId === message.messageId)
             const pinned = visiblePins.some(({ messageId }) => messageId === message.messageId)
+            const unread = currentUserId && !own && !message.deletedForEveryone && !message.readBy?.includes(currentUserId)
+            const liveStatus = receipts[message.messageId]
+            // In a group, a tick advances when at least one recipient confirms the status.
+            const status = liveStatus === 'read' || message.readBy?.length ? 'Read'
+              : liveStatus === 'delivered' || message.deliveredTo?.length ? 'Delivered' : 'Sent'
             return (
-              <li key={message.messageId} data-message className={cn('flex', own ? 'justify-end' : 'justify-start')}>
+              <li key={message.messageId} data-message data-unread-message-id={unread ? message.messageId : undefined}
+                className={cn('flex', own ? 'justify-end' : 'justify-start')}>
                 <article className={cn('min-w-0 max-w-[85%] rounded-lg border border-border px-3 py-2', own && 'bg-accent')}>
                   <div className="flex items-start gap-1 text-xs text-muted-foreground">
                     <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
                       <span className="break-words font-semibold">{nameFor(message.senderId)}</span>
                       <time dateTime={message.timestamp}>{timeFormat.format(new Date(message.timestamp))}</time>
+                      {own && !message.deletedForEveryone && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span tabIndex={0} role="img" aria-label={status}
+                              className={cn('inline-flex rounded focus-visible:outline-ring', status === 'Read' && 'text-blue-700 dark:text-blue-300')}>
+                              {status === 'Sent' ? <Check className="size-4" aria-hidden /> : <CheckCheck className="size-4" aria-hidden />}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>{status}</TooltipContent>
+                        </Tooltip>
+                      )}
                       {message.editedAt && !message.deletedForEveryone && <span>Edited</span>}
                       {starred && <Star className="size-3" aria-label="Starred" />}
                       {pinned && <Pin className="size-3" aria-label="Pinned" />}
@@ -456,6 +541,10 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
         </ol>
       </div>
       <div className="shrink-0 border-t border-border px-4 py-4">
+        <p role="status" aria-atomic="true" className={cn(typingNames.length ? 'mb-2 truncate text-xs text-muted-foreground' : 'sr-only')}>
+          {typingNames.length === 1 ? `${typingNames[0]} is typing…`
+            : typingNames.length > 1 ? `${typingNames.join(', ')} are typing…` : ''}
+        </p>
         {!atLatest && (
           <Button type="button" size="sm" variant="ghost" className="mb-2" onClick={jumpToLatest}>
             <ArrowDown aria-hidden /> Jump to latest
@@ -484,7 +573,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
         )}
         <form className="flex items-center gap-2" onSubmit={sendMessage}>
           <Input ref={composer} aria-label="Message" placeholder="Write a message" value={draft} maxLength={maxMessageLength}
-            onChange={(event) => setDraft(event.target.value)} autoComplete="off" />
+            onChange={(event) => updateDraft(event.target.value)} autoComplete="off" />
           <Button type="submit" variant="soft" className="w-10 px-0 sm:w-auto sm:px-4" disabled={!joined || !draft.trim() || sending}>
             <Send aria-hidden />
             <span className="sr-only sm:not-sr-only">{sending ? 'Sending…' : 'Send'}</span>

@@ -46,6 +46,7 @@ interface ClientToServerEvents {
   forward_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   join_room: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   leave_room: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
+  message_delivered: (payload: unknown) => void;
   message_read: (payload: unknown) => void;
   react_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   send_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
@@ -58,6 +59,7 @@ interface ServerToClientEvents {
   message_reacted: (payload: MessageReactionPayload) => void;
   message_updated: (payload: MessageUpdatedPayload) => void;
   pins_updated: (payload: { roomId: string }) => void;
+  message_delivered: (payload: ReceiptPayload) => void;
   message_read: (payload: ReceiptPayload) => void;
   typing: (payload: TypingPayload) => void;
 }
@@ -352,8 +354,8 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
       acknowledge?.({ success: true });
     });
 
-    socket.on("message_read", async (payload) => {
-      if (!isSocketEventAllowed(socket.id, "message_read")) {
+    async function recordReceipt(event: ReceiptPayload["event"], payload: unknown): Promise<void> {
+      if (!isSocketEventAllowed(socket.id, event)) {
         return;
       }
 
@@ -372,14 +374,20 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
         return;
       }
 
+      const isRead = event === "message_read";
+      const userId = socket.data.userId;
+      const receiptField = isRead ? "readBy" : "deliveredTo";
       const message = await MessageModel.findOneAndUpdate(
         {
           roomId: validation.data.roomId,
           messageId: validation.data.messageId,
-          senderId: { $ne: socket.data.userId },
+          senderId: { $ne: userId },
+          deletedFor: { $ne: userId },
+          deletedForEveryone: { $ne: true },
+          [receiptField]: { $ne: userId },
         },
-        { $addToSet: { deliveredTo: socket.data.userId, readBy: socket.data.userId } },
-        { new: true },
+        { $addToSet: isRead ? { deliveredTo: userId, readBy: userId } : { deliveredTo: userId } },
+        { returnDocument: "after" },
       );
 
       if (!message) {
@@ -387,14 +395,20 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
       }
 
       const receiptPayload: ReceiptPayload = {
-        event: "message_read",
+        event,
         roomId: message.roomId,
         messageId: message.messageId,
         readerId: socket.data.userId,
       };
 
       await redisPublisher.publish(chatReceiptsChannel, JSON.stringify(receiptPayload));
-    });
+    }
+
+    for (const event of ["message_delivered", "message_read"] as const) {
+      socket.on(event, (payload) => {
+        void recordReceipt(event, payload).catch((error: unknown) => console.error("Could not record message receipt", error));
+      });
+    }
 
     socket.on("typing", async (payload) => {
       if (!isSocketEventAllowed(socket.id, "typing")) {
@@ -436,7 +450,7 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
     });
 
     socket.on("disconnect", () => {
-      for (const eventName of ["join_room", "send_message", "forward_message", "react_message", "message_read", "typing"]) {
+      for (const eventName of ["join_room", "send_message", "forward_message", "react_message", "message_delivered", "message_read", "typing"]) {
         socketEventWindows.delete(`${socket.id}:${eventName}`);
       }
     });
@@ -483,7 +497,7 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
         const payload = receiptPayloadSchema.safeParse(JSON.parse(rawMessage) as unknown);
 
         if (payload.success) {
-          io.to(payload.data.roomId).emit("message_read", payload.data);
+          io.to(payload.data.roomId).emit(payload.data.event, payload.data);
         }
       } catch {
         // Ignore malformed JSON from Redis; only validated receipts are broadcast.

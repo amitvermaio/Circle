@@ -94,7 +94,7 @@ export const typingPayloadSchema = z.object({
 });
 
 export const receiptPayloadSchema = z.object({
-  event: z.literal("message_read"),
+  event: z.enum(["message_delivered", "message_read"]),
   roomId: roomIdSchema,
   messageId: messageIdSchema,
   readerId: userIdSchema,
