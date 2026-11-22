@@ -2,6 +2,7 @@ import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, UsersIcon } from '@phos
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router'
 
+import { Logo } from '@/components/logo'
 import { ThemeSwitcher } from '@/components/theme-switcher'
 import { Button } from '@/components/ui/button'
 import { logout } from '@/features/auth/auth.api'
@@ -189,9 +190,8 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
         </section>
       ) : (
         <section className="hidden min-w-0 place-content-center justify-items-center gap-2 p-6 text-center md:grid">
-          <ChatsCircleIcon className="size-6 text-muted-foreground" aria-hidden />
-          <h2 className="text-lg font-medium">Select a conversation</h2>
-          <p className="text-sm text-muted-foreground">Choose a chat from the sidebar or start a new one.</p>
+          <h2><Logo className="gap-2 [&>svg]:size-7" wordmarkClassName="text-5xl" /></h2>
+          <p className="text-sm text-muted-foreground">Select a conversation to start chatting.</p>
         </section>
       )}
       {creating === 'direct' && <NewChatDialog onClose={() => setCreating(null)} onOpenRoom={openRoom} />}
