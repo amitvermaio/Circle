@@ -5,6 +5,14 @@ const messages = (roomId: string) => `/api/v1/rooms/${encodeURIComponent(roomId)
 const message = (roomId: string, messageId: string) => `${messages(roomId)}/${encodeURIComponent(messageId)}`
 const pins = (roomId: string) => `/api/v1/rooms/${encodeURIComponent(roomId)}/pins`
 
+export function searchRoomMessages(roomId: string, q: string, signal: AbortSignal, cursor?: string) {
+  const query = new URLSearchParams({ q })
+  if (cursor) query.set('cursor', cursor)
+  return api<{ messages: RoomMessage[]; nextCursor: string | null }>(
+    `${messages(roomId)}/search?${query}`, { signal },
+  )
+}
+
 export function getRoomMessage(roomId: string, messageId: string, signal: AbortSignal) {
   return api<{ message: RoomMessage }>(message(roomId, messageId), { signal })
 }

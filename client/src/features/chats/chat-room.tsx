@@ -1,4 +1,4 @@
-import { ArrowDown, Check, CheckCheck, Pin, Send, Star, X } from 'lucide-react'
+import { ArrowDown, Check, CheckCheck, Pin, Search, Send, Star, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { getGroupMembers, listRoomMessages, type ChatUser, type Room } from './c
 import { actionError, maxMessageLength, MessageActionDialog, MessageMenu, MessageReactions, previewText,
   QuotedMessage, StarredMessagesDialog, type MessageAction } from './message-actions'
 import { deleteRoomMessage, editRoomMessage, listPinnedMessages, listStarredMessages, setMessagePin, setMessageStar } from './messages.api'
+import { RoomSearch } from './room-search'
 import { useVisibleReads } from './use-visible-reads'
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -57,6 +58,10 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   const [groupMembers, setGroupMembers] = useState<ChatUser[]>([])
   const [typingUsers, setTypingUsers] = useState<string[]>([])
   const [receipts, setReceipts] = useState<Record<string, ReceiptStatus>>({})
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [jumpError, setJumpError] = useState('')
+  const [jumpTarget, setJumpTarget] = useState<string>()
+  const [highlightedMessage, setHighlightedMessage] = useState<string>()
   const lastTypingAt = useRef(-Infinity)
   const currentUserRef = useRef(currentUserId)
   const composer = useRef<HTMLInputElement>(null)
@@ -310,44 +315,88 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
     panel.scrollTop = panel.scrollHeight
     stayAtLatest.current = true
     setAtLatest(true)
+    setHighlightedMessage(undefined)
   }
 
   useLayoutEffect(() => {
     const panel = scrollport.current
     if (!panel) return
     const anchor = olderAnchor.current
-    if (anchor) {
+    if (jumpTarget) {
+      const target = panel.querySelector<HTMLElement>(`[data-message="${CSS.escape(jumpTarget)}"] article`)
+      olderAnchor.current = null
+      if (target) {
+        if (searchOpen) {
+          setSearchOpen(false)
+          return
+        }
+        stayAtLatest.current = false
+        panel.scrollTop += target.getBoundingClientRect().top - panel.getBoundingClientRect().top
+          - Math.max(0, (panel.clientHeight - target.offsetHeight) / 2)
+        setHighlightedMessage(jumpTarget)
+        target.focus({ preventScroll: true })
+        trackScroll()
+      } else {
+        setJumpError('That message is no longer available in history.')
+      }
+      setJumpTarget(undefined)
+    } else if (anchor) {
       if (anchor.element.isConnected) panel.scrollTop += anchor.element.getBoundingClientRect().top - anchor.top
       olderAnchor.current = null
       trackScroll()
     } else if (stayAtLatest.current) {
       panel.scrollTop = panel.scrollHeight
     }
-  }, [messages, historyLoading, olderLoading, changes])
+  }, [messages, historyLoading, olderLoading, changes, jumpTarget, searchOpen])
 
-  async function loadOlder() {
-    if (!nextCursor || olderRequest.current) return
+  async function loadOlder(targetId?: string) {
+    if (historyLoading || olderRequest.current) return
+    setJumpError('')
+    if (targetId && visibleMessages.some(({ messageId }) => messageId === targetId)) {
+      setJumpTarget(targetId)
+      return
+    }
+    if (!nextCursor) {
+      if (targetId) setJumpError(historyError || 'That message is no longer available in history.')
+      return
+    }
     const controller = new AbortController()
     olderRequest.current = controller
     setOlderLoading(true)
     setHistoryError('')
+    let cursor: string | null = nextCursor
+    let found = false
+    const olderMessages: RoomMessage[] = []
     try {
-      const page = await listRoomMessages(roomId, controller.signal, nextCursor)
-      if (controller.signal.aborted) return
-      const panel = scrollport.current
-      if (panel) {
-        const top = panel.getBoundingClientRect().top
-        const element = Array.from(panel.querySelectorAll<HTMLElement>('[data-message]'))
-          .find((row) => row.getBoundingClientRect().bottom > top)
-        if (element) olderAnchor.current = { element, top: element.getBoundingClientRect().top }
-      }
-      setMessages((current) => mergeMessages(current, page.messages))
-      setNextCursor(page.nextCursor === nextCursor ? null : page.nextCursor)
+      do {
+        const page = await listRoomMessages(roomId, controller.signal, cursor)
+        if (controller.signal.aborted) return
+        olderMessages.push(...page.messages)
+        found = page.messages.some(({ messageId }) => messageId === targetId)
+        cursor = page.nextCursor && page.nextCursor < cursor ? page.nextCursor : null
+      } while (targetId && cursor && !found)
+      if (found) setJumpTarget(targetId)
+      else if (targetId) setJumpError('That message is no longer available in history.')
     } catch (error) {
-      if (!controller.signal.aborted) setHistoryError(error instanceof ApiError ? error.message : 'Could not load older messages.')
+      if (!controller.signal.aborted) {
+        const message = actionError(error, 'Could not load older messages.')
+        if (targetId) setJumpError(message)
+        else setHistoryError(message)
+      }
     } finally {
       olderRequest.current = null
-      if (!controller.signal.aborted) setOlderLoading(false)
+      if (!controller.signal.aborted) {
+        const panel = scrollport.current
+        if (panel && !found && olderMessages.length) {
+          const top = panel.getBoundingClientRect().top
+          const element = Array.from(panel.querySelectorAll<HTMLElement>('[data-message]'))
+            .find((row) => row.getBoundingClientRect().bottom > top)
+          if (element) olderAnchor.current = { element, top: element.getBoundingClientRect().top }
+        }
+        if (olderMessages.length) setMessages((current) => mergeMessages(current, olderMessages))
+        setNextCursor(cursor)
+        setOlderLoading(false)
+      }
     }
   }
 
@@ -428,6 +477,13 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   return (
     <>
       <div className="flex shrink-0 items-start gap-2 border-b border-border px-3 py-1">
+        <Button type="button" size="sm" variant="ghost" className="px-2" aria-expanded={searchOpen}
+          disabled={searchOpen && olderLoading} onClick={() => {
+            setJumpError('')
+            setSearchOpen((open) => !open)
+          }}>
+          <Search aria-hidden /> <span className="sr-only sm:not-sr-only">{searchOpen ? 'Close search' : 'Search messages'}</span>
+        </Button>
         <Button type="button" size="sm" variant="ghost" className="px-2" onClick={() => {
           setStarLoading(true)
           setStarError('')
@@ -453,6 +509,11 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
           </details>
         )}
       </div>
+      {searchOpen && (
+        <RoomSearch roomId={roomId} historyBusy={historyLoading || olderLoading}
+          jumpError={jumpError} onSelect={(id) => void loadOlder(id)} resolveMessage={visibleMessage}
+          nameFor={nameFor} timeFormat={timeFormat} />
+      )}
       <div ref={scrollport} onScroll={trackScroll} tabIndex={0} aria-label="Message history"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring [overflow-anchor:none]">
         {nextCursor && (
@@ -489,9 +550,10 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
             const status = liveStatus === 'read' || message.readBy?.length ? 'Read'
               : liveStatus === 'delivered' || message.deliveredTo?.length ? 'Delivered' : 'Sent'
             return (
-              <li key={message.messageId} data-message data-unread-message-id={unread ? message.messageId : undefined}
+              <li key={message.messageId} data-message={message.messageId} data-unread-message-id={unread ? message.messageId : undefined}
                 className={cn('flex', own ? 'justify-end' : 'justify-start')}>
-                <article className={cn('min-w-0 max-w-[85%] rounded-lg border border-border px-3 py-2', own && 'bg-accent')}>
+                <article tabIndex={-1} className={cn('min-w-0 max-w-[85%] rounded-lg border border-border px-3 py-2',
+                  own && 'bg-accent', highlightedMessage === message.messageId && 'ring-2 ring-inset ring-ring')}>
                   <div className="flex items-start gap-1 text-xs text-muted-foreground">
                     <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
                       <span className="break-words font-semibold">{nameFor(message.senderId)}</span>
