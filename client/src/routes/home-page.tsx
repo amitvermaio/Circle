@@ -57,7 +57,7 @@ export function HomePage() {
               <Button asChild variant="soft" size="sm" className="rounded-full"><Link to="/register">Sign up</Link></Button>
             </div>
           </nav>
-          <div className="circle-home-copy relative mx-auto max-w-4xl pt-24 text-center sm:pt-28">
+          <div className="circle-home-copy relative mx-auto max-w-4xl py-12 text-center sm:py-14">
             <span aria-hidden className="circle-home-sparkle mx-auto mb-6 grid size-10 place-items-center rounded-full">
               <SparkleIcon className="size-5" weight="fill" />
             </span>
