@@ -14,10 +14,10 @@ const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
 const DropdownMenuSub = DropdownMenuPrimitive.Sub
 
 const panel =
-  'z-50 min-w-[10rem] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-popover p-1.5 text-popover-foreground motion-safe:data-[state=open]:animate-chai-fade'
+  'light-overlay z-[110] w-52 max-w-[calc(100vw-16px)] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground motion-safe:data-[state=open]:animate-chai-fade'
 
 const item =
-  "relative flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-[15px] outline-none select-none transition-colors duration-150 focus:bg-accent/60 focus:text-brand data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+  "relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none select-none transition-colors duration-150 focus:bg-accent/60 focus:text-brand data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
 
 function DropdownMenuContent({ className, sideOffset = 6, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   return (
@@ -25,6 +25,7 @@ function DropdownMenuContent({ className, sideOffset = 6, ...props }: React.Comp
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
+        collisionPadding={8}
         className={cn(panel, 'max-h-(--radix-dropdown-menu-content-available-height) origin-(--radix-dropdown-menu-content-transform-origin)', className)}
         {...props}
       />
@@ -68,7 +69,7 @@ function DropdownMenuLabel({ className, ...props }: React.ComponentProps<typeof 
 }
 
 function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
-  return <DropdownMenuPrimitive.Separator data-slot="dropdown-menu-separator" className={cn('-mx-1.5 my-1.5 h-px bg-border', className)} {...props} />
+  return <DropdownMenuPrimitive.Separator data-slot="dropdown-menu-separator" className={cn('-mx-1 my-1 h-px bg-border', className)} {...props} />
 }
 
 function DropdownMenuSubTrigger({ className, children, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger>) {

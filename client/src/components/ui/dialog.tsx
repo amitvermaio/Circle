@@ -88,9 +88,9 @@ function Dialog({
   if (!open || !mounted) return null
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] grid place-items-center p-4" role="presentation">
+    <div className="fixed inset-0 z-[100] grid place-items-center p-[16px]" role="presentation">
       <div
-        className="absolute inset-0 bg-scrim/65 backdrop-blur-[6px] motion-safe:animate-chai-fade"
+        className="absolute inset-0 bg-scrim/40 motion-safe:animate-chai-fade"
         onClick={() => !busy && onClose()}
         aria-hidden="true"
       />
@@ -103,7 +103,7 @@ function Dialog({
         tabIndex={-1}
         data-slot="dialog"
         className={cn(
-          'relative w-full max-w-md rounded-2xl border border-card-edge-hover bg-card p-6 text-card-foreground outline-none motion-safe:animate-chai-pop',
+          'light-overlay relative max-h-[calc(100dvh-32px)] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-card p-6 text-card-foreground outline-none motion-safe:animate-chai-pop',
           className,
         )}
       >
@@ -122,9 +122,9 @@ function Dialog({
   )
 }
 
-/** The button row: stacked on phones (main action on top), right-aligned from sm. */
+/** The button row wraps on narrow screens. */
 function DialogActions({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div className={cn('mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end', className)} {...props} />
+  return <div className={cn('mt-6 flex flex-wrap justify-end gap-2', className)} {...props} />
 }
 
 export { Dialog, DialogActions }

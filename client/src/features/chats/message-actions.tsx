@@ -86,9 +86,9 @@ export function MessageMenu({ message, own, starred, pinned, canPin, joined, onR
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>React</DropdownMenuLabel>
-        <div className="flex flex-wrap gap-1 px-1">
+        <div className="grid grid-cols-6 gap-0.5 px-1">
           {emojiChoices.map(([emoji, title]) => (
-            <DropdownMenuItem key={emoji} disabled={!joined} onSelect={() => onReact(emoji)} aria-label={title} className="px-2">
+            <DropdownMenuItem key={emoji} disabled={!joined} onSelect={() => onReact(emoji)} aria-label={title} className="justify-center px-0">
               <span aria-hidden>{emoji}</span>
             </DropdownMenuItem>
           ))}

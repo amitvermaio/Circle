@@ -48,8 +48,7 @@ export function CreateStoryDialog({ onClose, onPosted }: { onClose: () => void; 
   }
 
   return (
-    <Dialog open onClose={onClose} title="Create story" busy={!!status} initialFocus={picker}
-      className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-3 sm:p-6">
+    <Dialog open onClose={onClose} title="Create story" busy={!!status} initialFocus={picker}>
       <form className="mt-3 space-y-2" onSubmit={submit}>
         <Field label="Media" hint="JPEG, PNG, WebP, MP4, PDF, or WebM audio. Up to 50 MB.">
           <Input ref={picker} type="file" accept={attachmentAccept} disabled={!!status}
@@ -70,7 +69,7 @@ export function CreateStoryDialog({ onClose, onPosted }: { onClose: () => void; 
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {status && <p role="status" className="text-sm text-muted-foreground">{status}</p>}
         <DialogActions className="mt-3">
-          <Button type="button" variant="outline" disabled={!!status} onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="ghost" disabled={!!status} onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={!file || !!status}>Post story</Button>
         </DialogActions>
       </form>

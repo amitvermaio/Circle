@@ -58,18 +58,17 @@ function ConfirmDialog({
       role="alertdialog"
       busy={busy}
       initialFocus={cancelBtn}
-      className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-3 sm:p-6"
       title={
-        <span className="flex items-start gap-4">
+        <span className="flex items-center gap-2">
           {tone === 'danger' && (
-            <span className="grid size-10 shrink-0 place-items-center rounded-full text-destructive" aria-hidden="true">
+            <span className="grid size-6 shrink-0 place-items-center rounded-full text-destructive" aria-hidden="true">
               <TriangleAlert className="size-5" />
             </span>
           )}
-          <span className="min-w-0 flex-1 pt-2">{title}</span>
+          <span className="min-w-0 flex-1">{title}</span>
         </span>
       }
-      description={children ? <div className={tone === 'danger' ? 'sm:pl-14' : undefined}>{children}</div> : undefined}
+      description={children ? <div className={tone === 'danger' ? 'pl-8' : undefined}>{children}</div> : undefined}
     >
       {typeToConfirm && (
         <div className="mt-5">

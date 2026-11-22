@@ -111,7 +111,7 @@ export function StoryViewer({ stories, initialIndex, onClose, onView }: {
   }
 
   return (
-    <Dialog open onClose={onClose} title={story.author} className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-3 sm:p-6">
+    <Dialog open onClose={onClose} title={story.author}>
       <div className="mt-2 space-y-2">
         <StorySlide key={story._id} story={story} onAdvance={next} onView={onView} />
         <div className="flex flex-wrap justify-between gap-1">

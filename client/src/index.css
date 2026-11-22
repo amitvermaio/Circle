@@ -418,7 +418,7 @@
 }
 
 /* Match the landing page's sand surfaces even when the global theme is dark. */
-.chat-workspace {
+:is(.chat-workspace, .light-overlay) {
   color-scheme: light;
   --background: var(--sand-beige);
   --card: color-mix(in srgb, var(--sand-beige) 74%, white);
@@ -454,3 +454,16 @@
   --chat-image-border: color-mix(in srgb, var(--forest-green) 18%, var(--sand-beige));
 }
 .message-bubble-image .message-read { color: var(--purple-on-sand); }
+
+/* Overlays are rendered under body and need their own surface and spacing. */
+.light-overlay {
+  --spacing: 0.25rem;
+  --background: color-mix(in srgb, var(--sand-beige) 55%, white);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --card-edge: var(--border);
+  --card-edge-hover: var(--border);
+  --card-fill: var(--card);
+  --secondary: var(--muted);
+  --success: #28583c;
+}
