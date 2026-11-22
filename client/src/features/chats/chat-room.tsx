@@ -1,16 +1,19 @@
-import { ArrowDown, Send } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { ArrowDown, Pin, Send, Star, X } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ApiError, getAuthToken } from '@/lib/api'
-import { connectSocket, getSocket, type RoomMessage } from '@/lib/socket'
+import { connectSocket, getSocket, type MessageUpdate, type RoomMessage } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 
-import { listRoomMessages, type Room } from './chats.api'
+import { getGroupMembers, listRoomMessages, type ChatUser, type Room } from './chats.api'
+import { actionError, maxMessageLength, MessageActionDialog, MessageMenu, MessageReactions, previewText,
+  QuotedMessage, StarredMessagesDialog, type MessageAction } from './message-actions'
+import { deleteRoomMessage, editRoomMessage, listPinnedMessages, listStarredMessages, setMessagePin, setMessageStar } from './messages.api'
 
-const maxMessageLength = 2000
 const timeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+type MessageChange = Partial<RoomMessage> | null
 
 function mergeMessages(current: RoomMessage[], incoming: RoomMessage[]) {
   const messages = new Map(current.map((message) => [message.messageId, message]))
@@ -20,7 +23,7 @@ function mergeMessages(current: RoomMessage[], incoming: RoomMessage[]) {
   return [...messages.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp) || a.messageId.localeCompare(b.messageId))
 }
 
-export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room: Room; currentUserId?: string }) {
+export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: string; room: Room; rooms: Room[]; currentUserId?: string }) {
   const [messages, setMessages] = useState<RoomMessage[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -34,10 +37,91 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [atLatest, setAtLatest] = useState(true)
+  const [changes, setChanges] = useState<Record<string, MessageChange>>({})
+  const [replyTo, setReplyTo] = useState<string>()
+  const [selectedAction, setSelectedAction] = useState<{ action: MessageAction; message: RoomMessage }>()
+  const [actionFeedback, setActionFeedback] = useState<{ error?: string; success?: string }>({})
+  const [stars, setStars] = useState<RoomMessage[]>([])
+  const [showStars, setShowStars] = useState(false)
+  const [starLoading, setStarLoading] = useState(true)
+  const [starError, setStarError] = useState('')
+  const [starRevision, setStarRevision] = useState(0)
+  const [pins, setPins] = useState<RoomMessage[]>([])
+  const [pinRevision, setPinRevision] = useState(0)
+  const [pinError, setPinError] = useState('')
+  const [groupMembers, setGroupMembers] = useState<ChatUser[]>([])
+  const composer = useRef<HTMLInputElement>(null)
   const scrollport = useRef<HTMLDivElement>(null)
   const stayAtLatest = useRef(true)
   const olderRequest = useRef<AbortController | null>(null)
   const olderAnchor = useRef<{ element: HTMLElement; top: number } | null>(null)
+  const rosterKey = room.type === 'group' ? room.participants.join(',') : null
+  const allowPin = !!currentUserId && (room.type === 'direct' || room.admins.includes(currentUserId))
+  const known = new Map([...pins, ...messages].map((message) => [message.messageId, message]))
+  const nameById = new Map([...rooms.flatMap(({ directUser }) => directUser ? [directUser] : []), ...groupMembers]
+    .map((user) => [user.userId, user.name || user.username]))
+
+  function nameFor(id: string) {
+    return id === currentUserId ? 'You' : nameById.get(id) ?? `Participant ${id.slice(-4)}`
+  }
+
+  function visibleMessage(message: RoomMessage) {
+    const change = changes[message.messageId]
+    return change === null ? [] : [{ ...message, ...change }]
+  }
+
+  const visibleMessages = messages.flatMap(visibleMessage)
+  const visiblePins = pins.flatMap(visibleMessage).filter((message) => !message.deletedForEveryone)
+  const visibleStars = stars.flatMap(visibleMessage).filter((message) => !message.deletedForEveryone)
+  const reply = replyTo && changes[replyTo] !== null ? known.get(replyTo) : undefined
+  const replySource = reply && !reply.deletedForEveryone && !changes[reply.messageId]?.deletedForEveryone
+    ? { ...reply, ...changes[reply.messageId] } : undefined
+
+  const patchMessage = useCallback((messageId: string, change: MessageChange) => {
+    setChanges((current) => {
+      const previous = current[messageId]
+      if (previous === null) return current
+      if (change === null) return { ...current, [messageId]: null }
+      if (previous?.deletedForEveryone) return current
+      if (change.editedAt && previous?.editedAt && change.editedAt < previous.editedAt) return current
+      return { ...current, [messageId]: { ...previous, ...change } }
+    })
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void listStarredMessages(controller.signal).then(({ messages }) => {
+      if (controller.signal.aborted) return
+      setStars(messages)
+      setStarError('')
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setStarError(actionError(error, 'Could not load starred messages.'))
+    }).finally(() => {
+      if (!controller.signal.aborted) setStarLoading(false)
+    })
+    return () => controller.abort()
+  }, [starRevision])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void listPinnedMessages(roomId, controller.signal).then(({ messages }) => {
+      if (controller.signal.aborted) return
+      setPins(messages)
+      setPinError('')
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setPinError(actionError(error, 'Could not load pinned messages.'))
+    })
+    return () => controller.abort()
+  }, [roomId, pinRevision])
+
+  useEffect(() => {
+    if (rosterKey === null) return
+    const controller = new AbortController()
+    void getGroupMembers(roomId, controller.signal).then(({ members }) => {
+      if (!controller.signal.aborted) setGroupMembers(members)
+    }).catch(() => { /* Keep the participant fallback label when profiles could not load. */ })
+    return () => controller.abort()
+  }, [roomId, rosterKey])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -80,6 +164,7 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
         if (!active || attempt !== joinAttempt) return
         setJoined(result.success)
         if (!result.success) setSocketError('Could not join this conversation.')
+        else setPinRevision((value) => value + 1)
       } catch {
         if (active && attempt === joinAttempt) setSocketError('Joining this conversation timed out.')
       }
@@ -97,6 +182,26 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
       setJoined(false)
     }
 
+    function updateMessage(update: MessageUpdate) {
+      if (update.roomId !== roomId) return
+      if (update.action === 'deleted_for_me') {
+        // The server sends delete-for-me updates only to that user's sockets.
+        patchMessage(update.messageId, null)
+      } else if (update.action === 'deleted_for_everyone') {
+        patchMessage(update.messageId, { deletedForEveryone: true, text: undefined, media: undefined, reactions: undefined, replyTo: undefined })
+      } else {
+        patchMessage(update.messageId, { text: update.text, editedAt: update.editedAt })
+      }
+    }
+
+    function updateReactions(update: { roomId: string; messageId: string; reactions: Record<string, string[]> }) {
+      if (update.roomId === roomId) patchMessage(update.messageId, { reactions: update.reactions })
+    }
+
+    function updatePins(update: { roomId: string }) {
+      if (update.roomId === roomId) setPinRevision((value) => value + 1)
+    }
+
     function connectionError() {
       disconnect()
       setSocketError('Could not connect to chat.')
@@ -106,6 +211,9 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
     activeSocket.on('disconnect', disconnect)
     activeSocket.on('connect_error', connectionError)
     activeSocket.on('new_message', receive)
+    activeSocket.on('message_updated', updateMessage)
+    activeSocket.on('message_reacted', updateReactions)
+    activeSocket.on('pins_updated', updatePins)
     if (activeSocket.connected) void join()
 
     return () => {
@@ -114,9 +222,12 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
       activeSocket.off('disconnect', disconnect)
       activeSocket.off('connect_error', connectionError)
       activeSocket.off('new_message', receive)
+      activeSocket.off('message_updated', updateMessage)
+      activeSocket.off('message_reacted', updateReactions)
+      activeSocket.off('pins_updated', updatePins)
       if (activeSocket.connected) activeSocket.emit('leave_room', { roomId })
     }
-  }, [roomId, socketRetry])
+  }, [roomId, socketRetry, patchMessage])
 
   function trackScroll() {
     const panel = scrollport.current
@@ -144,7 +255,7 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
     } else if (stayAtLatest.current) {
       panel.scrollTop = panel.scrollHeight
     }
-  }, [messages, historyLoading, olderLoading])
+  }, [messages, historyLoading, olderLoading, changes])
 
   async function loadOlder() {
     if (!nextCursor || olderRequest.current) return
@@ -181,9 +292,10 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
     setSending(true)
     setSendError('')
     try {
-      const result = await socket.timeout(10_000).emitWithAck('send_message', { roomId, text })
+      const result = await socket.timeout(10_000).emitWithAck('send_message', { roomId, text, replyTo: replySource?.messageId })
       if (result.success) {
         setDraft((current) => current.trim() === text ? '' : current)
+        setReplyTo((current) => current === replySource?.messageId ? undefined : current)
         if (stayAtLatest.current) jumpToLatest()
       } else {
         setSendError('Could not send this message. Your draft is still here.')
@@ -195,8 +307,84 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
     }
   }
 
+  async function submitAction(action: MessageAction, message: RoomMessage, value: string) {
+    const { messageId } = message
+    if (action === 'edit') {
+      const { message: edited } = await editRoomMessage(roomId, messageId, value)
+      patchMessage(messageId, { text: edited.text, editedAt: edited.editedAt })
+    } else if (action === 'forward') {
+      const socket = getSocket()
+      if (!socket?.connected || !joined) throw new ApiError('Reconnect to chat before forwarding.', 'SOCKET_UNAVAILABLE', 0)
+      const result = await socket.timeout(10_000).emitWithAck('forward_message', { targetRoomId: value, messageId })
+      if (!result.success) throw new ApiError('Could not forward the message to that conversation.', 'FORWARD_FAILED', 0)
+      setActionFeedback({ success: 'Message forwarded.' })
+    } else {
+      const scope = action === 'delete-me' ? 'me' : 'everyone'
+      await deleteRoomMessage(roomId, messageId, scope)
+      patchMessage(messageId, scope === 'me' ? null : { deletedForEveryone: true, text: undefined, media: undefined, replyTo: undefined })
+    }
+  }
+
+  async function toggleStar(messageId: string, starred: boolean) {
+    setActionFeedback({})
+    try {
+      await setMessageStar(messageId, starred)
+      setStarRevision((value) => value + 1)
+    } catch (error) {
+      setActionFeedback({ error: actionError(error, 'Could not update the star.') })
+    }
+  }
+
+  async function togglePin(messageId: string, pinned: boolean) {
+    setActionFeedback({})
+    try {
+      await setMessagePin(roomId, messageId, pinned)
+      setPinRevision((value) => value + 1)
+    } catch (error) {
+      setActionFeedback({ error: actionError(error, 'Could not update the pin.') })
+    }
+  }
+
+  async function react(messageId: string, emoji: string) {
+    setActionFeedback({})
+    const socket = getSocket()
+    try {
+      if (!socket?.connected || !joined) throw new Error()
+      const result = await socket.timeout(10_000).emitWithAck('react_message', { roomId, messageId, emoji })
+      if (!result.success) throw new Error()
+    } catch {
+      setActionFeedback({ error: 'Could not update the reaction.' })
+    }
+  }
+
   return (
     <>
+      <div className="flex shrink-0 items-start gap-2 border-b border-border px-3 py-1">
+        <Button type="button" size="sm" variant="ghost" className="px-2" onClick={() => {
+          setStarLoading(true)
+          setStarError('')
+          setStarRevision((value) => value + 1)
+          setShowStars(true)
+        }}><Star aria-hidden /> <span className="sr-only sm:not-sr-only">Starred messages</span></Button>
+        {pinError && <p role="alert" className="text-xs text-destructive">{pinError}</p>}
+        {visiblePins.length > 0 && (
+          <details className="min-w-0 flex-1 py-1 text-xs">
+            <summary className="cursor-pointer truncate rounded focus-visible:outline-ring">
+              Pinned messages ({visiblePins.length}) <span className="text-muted-foreground">· {previewText(visiblePins[0])}</span>
+            </summary>
+            <ul className="mt-1 max-h-20 space-y-1 overflow-y-auto" aria-label="Pinned messages">
+              {visiblePins.map((message) => (
+                <li key={message.messageId} className="flex items-center gap-2">
+                  <Pin className="size-3 shrink-0" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{previewText(message)}</span>
+                  {allowPin && <Button type="button" size="sm" variant="ghost"
+                    onClick={() => void togglePin(message.messageId, false)}>Unpin</Button>}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
       <div ref={scrollport} onScroll={trackScroll} tabIndex={0} aria-label="Message history"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring [overflow-anchor:none]">
         {nextCursor && (
@@ -219,25 +407,48 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
             )}
           </div>
         )}
-        {!historyLoading && !historyError && !messages.length && (
+        {!historyLoading && !historyError && !visibleMessages.length && (
           <p className="py-8 text-center text-sm text-muted-foreground">No messages yet. Say hello.</p>
         )}
         <ol aria-label="Messages" className="space-y-4">
-          {messages.map((message) => {
+          {visibleMessages.map((message) => {
             const own = message.senderId === currentUserId
-            const directUser = room.directUser
-            const sender = own ? 'You' : directUser?.userId === message.senderId
-              ? directUser.name || directUser.username : `Participant ${message.senderId.slice(-4)}`
+            const starred = visibleStars.some(({ messageId }) => messageId === message.messageId)
+            const pinned = visiblePins.some(({ messageId }) => messageId === message.messageId)
             return (
               <li key={message.messageId} data-message className={cn('flex', own ? 'justify-end' : 'justify-start')}>
                 <article className={cn('min-w-0 max-w-[85%] rounded-lg border border-border px-3 py-2', own && 'bg-accent')}>
-                  <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
-                    <span className="font-semibold">{sender}</span>
-                    <time dateTime={message.timestamp}>{timeFormat.format(new Date(message.timestamp))}</time>
+                  <div className="flex items-start gap-1 text-xs text-muted-foreground">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+                      <span className="break-words font-semibold">{nameFor(message.senderId)}</span>
+                      <time dateTime={message.timestamp}>{timeFormat.format(new Date(message.timestamp))}</time>
+                      {message.editedAt && !message.deletedForEveryone && <span>Edited</span>}
+                      {starred && <Star className="size-3" aria-label="Starred" />}
+                      {pinned && <Pin className="size-3" aria-label="Pinned" />}
+                    </div>
+                    {!message.deletedForEveryone && (
+                      <MessageMenu message={message} own={own} starred={starred} pinned={pinned} canPin={allowPin} joined={joined}
+                        onReply={() => {
+                          setReplyTo(message.messageId)
+                          composer.current?.focus()
+                        }}
+                        onAction={(action) => setSelectedAction({ action, message })}
+                        onStar={() => void toggleStar(message.messageId, !starred)}
+                        onPin={() => void togglePin(message.messageId, !pinned)}
+                        onReact={(emoji) => void react(message.messageId, emoji)} />
+                    )}
                   </div>
+                  {message.forwardedFrom && !message.deletedForEveryone && <p className="text-xs text-muted-foreground">Forwarded</p>}
+                  {message.replyTo && !message.deletedForEveryone && (
+                    <QuotedMessage roomId={roomId} messageId={message.replyTo} known={known.get(message.replyTo)}
+                      change={changes[message.replyTo]} nameFor={nameFor} />
+                  )}
                   <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-                    {message.deletedForEveryone ? 'Message deleted' : message.text || (message.media?.length ? 'Attachment' : 'Message unavailable')}
+                    {previewText(message)}
                   </p>
+                  {message.reactions && !message.deletedForEveryone && (
+                    <MessageReactions reactions={message.reactions} nameFor={nameFor} />
+                  )}
                 </article>
               </li>
             )
@@ -261,8 +472,18 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
           </div>
         ) : !joined && <p role="status" className="mb-2 text-sm text-muted-foreground">Connecting to chat…</p>}
         {sendError && <p role="alert" className="mb-2 text-sm text-destructive">{sendError}</p>}
+        {actionFeedback.error && <p role="alert" className="mb-2 text-sm text-destructive">{actionFeedback.error}</p>}
+        {actionFeedback.success && <p role="status" className="mb-2 text-sm text-muted-foreground">{actionFeedback.success}</p>}
+        {replySource && (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-border px-2">
+            <div className="min-w-0 flex-1">
+              <QuotedMessage roomId={roomId} messageId={replySource.messageId} known={replySource} nameFor={nameFor} />
+            </div>
+            <Button type="button" variant="ghost" size="icon" aria-label="Cancel reply" onClick={() => setReplyTo(undefined)}><X aria-hidden /></Button>
+          </div>
+        )}
         <form className="flex items-center gap-2" onSubmit={sendMessage}>
-          <Input aria-label="Message" placeholder="Write a message" value={draft} maxLength={maxMessageLength}
+          <Input ref={composer} aria-label="Message" placeholder="Write a message" value={draft} maxLength={maxMessageLength}
             onChange={(event) => setDraft(event.target.value)} autoComplete="off" />
           <Button type="submit" variant="soft" className="w-10 px-0 sm:w-auto sm:px-4" disabled={!joined || !draft.trim() || sending}>
             <Send aria-hidden />
@@ -270,6 +491,12 @@ export function ChatRoom({ roomId, room, currentUserId }: { roomId: string; room
           </Button>
         </form>
       </div>
+      {selectedAction && changes[selectedAction.message.messageId] !== null
+        && !changes[selectedAction.message.messageId]?.deletedForEveryone && (
+        <MessageActionDialog action={selectedAction.action} message={selectedAction.message} rooms={rooms}
+          onClose={() => setSelectedAction(undefined)} onSubmit={(value) => submitAction(selectedAction.action, selectedAction.message, value)} />
+      )}
+      {showStars && <StarredMessagesDialog messages={visibleStars} rooms={rooms} loading={starLoading} error={starError} onClose={() => setShowStars(false)} />}
     </>
   )
 }

@@ -46,6 +46,13 @@ export const messageParamsSchema = z.object({
   messageId: messageIdSchema,
 });
 
+export const starParamsSchema = messageParamsSchema.pick({ messageId: true });
+
+export const pinsUpdatedPayloadSchema = z.object({
+  event: z.literal("pins_updated"),
+  roomId: roomIdSchema,
+});
+
 export const editMessageSchema = z.object({
   text: z.string().trim().min(1, "Message text is required").max(2000, "Message text must be at most 2000 characters"),
 });

@@ -18,6 +18,7 @@ import {
   messageReadSchema,
   messageReactionPayloadSchema,
   messageUpdatedPayloadSchema,
+  pinsUpdatedPayloadSchema,
   reactMessageSchema,
   receiptPayloadSchema,
   sendMessageSchema,
@@ -42,11 +43,11 @@ const socketEventWindowMs = 10_000;
 const socketEventLimit = 30;
 
 interface ClientToServerEvents {
-  forward_message: (payload: unknown) => void;
+  forward_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   join_room: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   leave_room: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   message_read: (payload: unknown) => void;
-  react_message: (payload: unknown) => void;
+  react_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   send_message: (payload: unknown, acknowledge?: (result: { success: boolean }) => void) => void;
   typing: (payload: unknown) => void;
 }
@@ -56,6 +57,7 @@ interface ServerToClientEvents {
   new_message: (payload: ChatMessagePayload) => void;
   message_reacted: (payload: MessageReactionPayload) => void;
   message_updated: (payload: MessageUpdatedPayload) => void;
+  pins_updated: (payload: { roomId: string }) => void;
   message_read: (payload: ReceiptPayload) => void;
   typing: (payload: TypingPayload) => void;
 }
@@ -193,6 +195,8 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
         const repliedToMessage = await MessageModel.exists({
           roomId: validation.data.roomId,
           messageId: validation.data.replyTo,
+          deletedFor: { $ne: socket.data.userId },
+          deletedForEveryone: { $ne: true },
         });
 
         if (!repliedToMessage) {
@@ -230,24 +234,25 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
       acknowledge?.({ success: true });
     });
 
-    socket.on("forward_message", async (payload) => {
+    socket.on("forward_message", async (payload, acknowledge) => {
       if (!isSocketEventAllowed(socket.id, "forward_message")) {
-        return;
+        return void acknowledge?.({ success: false });
       }
 
       const validation = forwardMessageSchema.safeParse(payload);
 
       if (!validation.success) {
-        return;
+        return void acknowledge?.({ success: false });
       }
 
       const sourceMessage = await MessageModel.findOne({
         messageId: validation.data.messageId,
-        deletedForEveryone: false,
+        deletedForEveryone: { $ne: true },
+        deletedFor: { $ne: socket.data.userId },
       });
 
       if (!sourceMessage) {
-        return;
+        return void acknowledge?.({ success: false });
       }
 
       const [sourceRoom, targetRoom] = await Promise.all([
@@ -256,7 +261,7 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
       ]);
 
       if (!sourceRoom || !targetRoom) {
-        return;
+        return void acknowledge?.({ success: false });
       }
 
       const forwardedFrom = sourceMessage.forwardedFrom ?? {
@@ -282,17 +287,18 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
       };
 
       await redisPublisher.publish(chatMessagesChannel, JSON.stringify(messagePayload));
+      acknowledge?.({ success: true });
     });
 
-    socket.on("react_message", async (payload) => {
+    socket.on("react_message", async (payload, acknowledge) => {
       if (!isSocketEventAllowed(socket.id, "react_message")) {
-        return;
+        return void acknowledge?.({ success: false });
       }
 
       const validation = reactMessageSchema.safeParse(payload);
 
       if (!validation.success) {
-        return;
+        return void acknowledge?.({ success: false });
       }
 
       const room = await RoomModel.exists({
@@ -301,17 +307,18 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
       });
 
       if (!room) {
-        return;
+        return void acknowledge?.({ success: false });
       }
 
       const message = await MessageModel.findOne({
         roomId: validation.data.roomId,
         messageId: validation.data.messageId,
-        deletedForEveryone: false,
+        deletedForEveryone: { $ne: true },
+        deletedFor: { $ne: socket.data.userId },
       });
 
       if (!message) {
-        return;
+        return void acknowledge?.({ success: false });
       }
 
       const reactions = new Map<string, string[]>(message.reactions as unknown as Iterable<[string, string[]]>);
@@ -342,6 +349,7 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
         reactions: Object.fromEntries(reactions.entries()),
       };
       await redisPublisher.publish(chatMessagesChannel, JSON.stringify(reactionPayload));
+      acknowledge?.({ success: true });
     });
 
     socket.on("message_read", async (payload) => {
@@ -448,7 +456,9 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
         const updatedPayload = messageUpdatedPayloadSchema.safeParse(rawPayload);
 
         if (updatedPayload.success) {
-          io.to(updatedPayload.data.roomId).emit("message_updated", updatedPayload.data);
+          const update = updatedPayload.data;
+          const recipients = update.action === "deleted_for_me" ? update.deletedFor?.map(getUserSocketRoom) ?? [] : [update.roomId];
+          if (recipients.length) io.to(recipients).emit("message_updated", update);
           return;
         }
 
@@ -456,6 +466,11 @@ export async function initSocketServer(httpServer: HttpServer): Promise<Server<C
 
         if (reactionPayload.success) {
           io.to(reactionPayload.data.roomId).emit("message_reacted", reactionPayload.data);
+          return;
+        }
+        const pinsPayload = pinsUpdatedPayloadSchema.safeParse(rawPayload);
+        if (pinsPayload.success) {
+          io.to(pinsPayload.data.roomId).emit("pins_updated", { roomId: pinsPayload.data.roomId });
         }
       } catch {
         // Ignore malformed JSON from Redis; only validated messages are broadcast.

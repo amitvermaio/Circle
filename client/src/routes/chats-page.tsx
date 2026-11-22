@@ -193,7 +193,7 @@ export function ChatsPage() {
                 </Button>
               )}
             </div>
-            {selectedRoom ? <ChatRoom key={roomId} roomId={roomId} room={selectedRoom} currentUserId={currentUserId} />
+            {selectedRoom ? <ChatRoom key={roomId} roomId={roomId} room={selectedRoom} rooms={rooms} currentUserId={currentUserId} />
               : <p className="p-4 text-sm text-muted-foreground">{loading ? 'Loading conversation…' : error || 'Conversation unavailable.'}</p>}
           </section>
         ) : (

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { MessageModel } from "../../src/models/message.model";
 import { api, bearer, registerUser } from "../helpers/api";
 import { clearDatabase, connectTestDatabase } from "../helpers/db";
 import { connectSocket, joinRoom, startSocketServer, type SocketTestServer } from "../helpers/socket";
@@ -60,12 +61,84 @@ describe("socket messaging", () => {
       expect(details.body.data.members).toContainEqual({
         userId: invitee.user.userId, name: invitee.user.name, username: invitee.user.username,
       });
+      const message = await MessageModel.create({ roomId, senderId: admin.user.userId, text: "Group note" });
+      const pinPath = `${roomPath}/pins/${message.messageId}`;
+      await api.post(pinPath).set(memberHeaders).expect(403);
+      await api.post(pinPath).set(headers).expect(200);
+      await api.get(`${roomPath}/pins`).set(memberHeaders).expect(200)
+        .expect(({ body }) => expect(body.data.messages).toEqual([expect.objectContaining({ messageId: message.messageId })]));
+      await api.delete(pinPath).set(memberHeaders).expect(403);
+      await api.delete(pinPath).set(headers).expect(200);
       const left = new Promise<unknown>((resolve) => memberSocket.once("update_membership", resolve));
       await api.delete(`${roomPath}/members/${invitee.user.userId}`).set(headers).expect(200);
       expect(await left).toMatchObject({ roomId, userId: invitee.user.userId, action: "leave" });
       await api.get(roomPath).set(bearer(invitee.token)).expect(404);
     } finally {
       memberSocket.close();
+    }
+  });
+
+  it("edits, replies, forwards and reacts while keeping stars and personal deletion private", async () => {
+    const sender = await registerUser();
+    const receiver = await registerUser();
+    const senderHeaders = bearer(sender.token);
+    const receiverHeaders = bearer(receiver.token);
+    const { body } = await api.post("/api/v1/rooms").set(senderHeaders)
+      .send({ otherUserId: receiver.user.userId }).expect(201);
+    const roomId = body.data.room.roomId as string;
+    const socket = await connectSocket(server.url, sender.token);
+    const receiverSocket = await connectSocket(server.url, receiver.token);
+
+    try {
+      await joinRoom(socket, roomId);
+      await joinRoom(receiverSocket, roomId);
+      const message = await MessageModel.create({ roomId, senderId: sender.user.userId, text: "Original" });
+      const messageId = message.messageId as string;
+      const messagePath = `/api/v1/rooms/${roomId}/messages/${messageId}`;
+      const starPath = `/api/v1/messages/${messageId}/star`;
+      const stars = "/api/v1/users/me/starred";
+
+      await api.patch(messagePath).set(receiverHeaders).send({ text: "Denied" }).expect(403);
+      const updated = new Promise<unknown>((resolve) => receiverSocket.once("message_updated", resolve));
+      await api.patch(messagePath).set(senderHeaders).send({ text: "Edited text" }).expect(200)
+        .expect(({ body }) => expect(body.data.message.editedAt).toEqual(expect.any(String)));
+      expect(await updated).toMatchObject({ action: "edited", text: "Edited text" });
+
+      const reply = new Promise<Record<string, string>>((resolve) => receiverSocket.once("new_message", resolve));
+      expect(await socket.timeout(2000).emitWithAck("send_message", { roomId, text: "Reply", replyTo: messageId })).toEqual({ success: true });
+      const replyMessage = await reply;
+      expect(replyMessage).toMatchObject({ replyTo: messageId, text: "Reply" });
+
+      const forwarded = new Promise<unknown>((resolve) => receiverSocket.once("new_message", resolve));
+      expect(await socket.timeout(2000).emitWithAck("forward_message", { targetRoomId: roomId, messageId })).toEqual({ success: true });
+      expect(await forwarded).toMatchObject({ forwardedFrom: { messageId }, text: "Edited text" });
+
+      for (const reactions of [{ "👍": [sender.user.userId] }, {}]) {
+        const reacted = new Promise<{ messageId: string; reactions: Record<string, string[]> }>((resolve) => receiverSocket.once("message_reacted", resolve));
+        expect(await socket.timeout(2000).emitWithAck("react_message", { roomId, messageId, emoji: "👍" })).toEqual({ success: true });
+        expect(await reacted).toMatchObject({ messageId });
+        expect((await reacted).reactions).toEqual(reactions);
+      }
+
+      await api.post(starPath).set(receiverHeaders).expect(200);
+      await api.get(stars).set(senderHeaders).expect(200).expect(({ body }) => expect(body.data.messages).toEqual([]));
+      await api.get(stars).set(receiverHeaders).expect(200)
+        .expect(({ body }) => expect(body.data.messages).toEqual([expect.objectContaining({ messageId })]));
+      await api.delete(starPath).set(receiverHeaders).expect(200);
+
+      const personal = new Promise<unknown>((resolve) => receiverSocket.once("message_updated", resolve));
+      const replyPath = `/api/v1/rooms/${roomId}/messages/${replyMessage.messageId}`;
+      await api.delete(`${replyPath}?scope=me`).set(receiverHeaders).expect(200);
+      expect(await personal).toMatchObject({ action: "deleted_for_me", deletedFor: [receiver.user.userId] });
+      await api.get(replyPath).set(receiverHeaders).expect(404);
+      await api.get(replyPath).set(senderHeaders).expect(200);
+
+      await api.delete(`${messagePath}?scope=everyone`).set(senderHeaders).expect(200)
+        .expect(({ body }) => expect(body.data.message).not.toHaveProperty("text"));
+      await api.get(messagePath).set(receiverHeaders).expect(404);
+    } finally {
+      socket.close();
+      receiverSocket.close();
     }
   });
 

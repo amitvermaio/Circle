@@ -9,6 +9,7 @@ export interface Room {
   photoUrl?: string;
   admins: string[];
   createdBy: string;
+  pinnedMessageIds: string[];
 }
 
 const roomSchema = new Schema<Room>(
@@ -43,6 +44,7 @@ const roomSchema = new Schema<Room>(
     photoUrl: { type: String, trim: true },
     admins: { type: [String], required: true, default: [] },
     createdBy: { type: String, required: true },
+    pinnedMessageIds: { type: [String], default: [], select: false },
   },
   { timestamps: true },
 );

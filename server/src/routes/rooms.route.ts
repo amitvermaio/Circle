@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getMessage, listPins, updatePin } from "../controllers/message-actions.controller";
 
 import { deleteMessage, editMessage, listMessageHistory, searchMessages } from "../controllers/messages.controller";
 import {
@@ -24,5 +25,9 @@ roomsRouter.patch("/:roomId", updateGroupRoom);
 roomsRouter.patch("/:roomId/messages/:messageId", editMessage);
 roomsRouter.delete("/:roomId/messages/:messageId", deleteMessage);
 roomsRouter.get("/:roomId/messages/search", searchMessages);
+roomsRouter.get("/:roomId/messages/:messageId", getMessage);
 roomsRouter.get("/:roomId/messages", listMessageHistory);
+roomsRouter.get("/:roomId/pins", listPins);
+roomsRouter.post("/:roomId/pins/:messageId", updatePin);
+roomsRouter.delete("/:roomId/pins/:messageId", updatePin);
 roomsRouter.get("/:roomId", getRoom);

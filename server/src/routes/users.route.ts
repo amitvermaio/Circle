@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { listStars } from "../controllers/message-actions.controller";
 
 import { searchUsers, updateProfile, usernameAvailable } from "../controllers/users.controller";
 import { authenticate } from "../middlewares/auth.middleware";
@@ -9,3 +10,4 @@ export const usersRouter = Router();
 usersRouter.get("/username-available", usernameAvailabilityRateLimiter, usernameAvailable);
 usersRouter.get("/search", authenticate, searchUsers);
 usersRouter.patch("/me", authenticate, updateProfile);
+usersRouter.get("/me/starred", authenticate, listStars);

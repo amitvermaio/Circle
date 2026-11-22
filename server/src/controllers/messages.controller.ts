@@ -227,7 +227,7 @@ export async function deleteMessage(request: Request, response: Response, next: 
         roomId,
         messageId,
         action: "deleted_for_me",
-        deletedFor: message.deletedFor,
+        deletedFor: [userId],
       };
       await redisPublisher.publish(chatMessagesChannel, JSON.stringify(payload));
       response.status(200).json({ success: true, data: { message: message.toJSON() } });

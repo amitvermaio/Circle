@@ -27,6 +27,7 @@ export interface Message {
   reactions: Map<string, string[]>;
   deliveredTo: string[];
   readBy: string[];
+  starredBy: string[];
 }
 
 const mediaAttachmentSchema = new Schema<MediaAttachment>(
@@ -69,20 +70,27 @@ const messageSchema = new Schema<Message>(
     // Per-recipient arrays support atomic $addToSet updates without trusting client status values.
     deliveredTo: { type: [String], required: true, default: [] },
     readBy: { type: [String], required: true, default: [] },
+    starredBy: { type: [String], default: [], select: false },
   },
   { timestamps: true },
 );
 
 messageSchema.index({ roomId: 1, timestamp: -1 });
 messageSchema.index({ text: "text" });
+messageSchema.index({ starredBy: 1, timestamp: -1 });
 
 messageSchema.set("toJSON", {
   transform: (_document, returnedMessage) => {
     const sanitizedMessage = returnedMessage as unknown as Record<string, unknown>;
     delete sanitizedMessage.__v;
+    delete sanitizedMessage.starredBy;
+    delete sanitizedMessage.deletedFor;
 
     if (sanitizedMessage.deletedForEveryone === true) {
       delete sanitizedMessage.text;
+      delete sanitizedMessage.media;
+      delete sanitizedMessage.replyTo;
+      delete sanitizedMessage.reactions;
     }
 
     if (Array.isArray(sanitizedMessage.media)) {
