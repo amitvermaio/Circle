@@ -1,5 +1,6 @@
-import { ArrowDownIcon, CheckIcon, ChecksIcon, PaperclipIcon, PushPinIcon, MagnifyingGlassIcon, PaperPlaneRightIcon, StarIcon, XIcon } from '@phosphor-icons/react'
+import { ArrowDownIcon, ArrowLeftIcon, CheckIcon, ChecksIcon, GearSixIcon, PaperclipIcon, PushPinIcon, MagnifyingGlassIcon, PaperPlaneRightIcon, StarIcon, XIcon } from '@phosphor-icons/react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,7 +13,7 @@ import { connectSocket, getSocket, type MessageUpdate, type RoomMessage, type So
   type UploadedMedia, type UserBlockedEvent } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 
-import { getGroupMembers, listRoomMessages, type ChatUser, type Room } from './chats.api'
+import { getGroupMembers, listRoomMessages, roomName, type ChatUser, type Room } from './chats.api'
 import { attachmentAccept, uploadAttachment, validateAttachment } from './media.api'
 import { actionError, maxMessageLength, MessageActionDialog, MessageMenu, MessageReactions, previewText,
   QuotedMessage, StarredMessagesDialog, type MessageAction } from './message-actions'
@@ -35,7 +36,13 @@ function mergeMessages(current: RoomMessage[], incoming: RoomMessage[]) {
   return [...messages.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp) || a.messageId.localeCompare(b.messageId))
 }
 
-export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: string; room: Room; rooms: Room[]; currentUserId?: string }) {
+export function ChatRoom({ roomId, room, rooms, currentUserId, onOpenGroupSettings }: {
+  roomId: string
+  room: Room
+  rooms: Room[]
+  currentUserId?: string
+  onOpenGroupSettings: () => void
+}) {
   const [messages, setMessages] = useState<RoomMessage[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -572,38 +579,24 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
 
   return (
     <>
-      <div className="flex shrink-0 items-start gap-2 border-b border-border px-3 py-1">
-        <Button type="button" size="sm" variant="ghost" className="px-2" aria-expanded={searchOpen}
+      <header className="forest-header flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-4 py-2">
+        <Button asChild variant="ghost" size="icon" className="size-8 md:hidden">
+          <Link to="/chats" aria-label="Back to chats"><ArrowLeftIcon aria-hidden /></Link>
+        </Button>
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold" title={roomName(room)}>{roomName(room)}</h2>
+        <Button type="button" size="sm" variant="ghost" className="px-2" title={searchOpen ? 'Close search' : 'Search messages'} aria-expanded={searchOpen}
           disabled={searchOpen && olderLoading} onClick={() => {
             setJumpError('')
             setSearchOpen((open) => !open)
           }}>
-          <MagnifyingGlassIcon aria-hidden /> <span className="sr-only sm:not-sr-only">{searchOpen ? 'Close search' : 'Search messages'}</span>
+          <MagnifyingGlassIcon aria-hidden /> <span className="sr-only lg:not-sr-only">{searchOpen ? 'Close search' : 'Search messages'}</span>
         </Button>
-        <Button type="button" size="sm" variant="ghost" className="px-2" onClick={() => {
+        <Button type="button" size="sm" variant="ghost" className="px-2" title="Starred messages" onClick={() => {
           setStarLoading(true)
           setStarError('')
           setStarRevision((value) => value + 1)
           setShowStars(true)
-        }}><StarIcon aria-hidden /> <span className="sr-only sm:not-sr-only">Starred messages</span></Button>
-        {pinError && <p role="alert" className="text-xs text-destructive">{pinError}</p>}
-        {visiblePins.length > 0 && (
-          <details className="min-w-0 flex-1 py-1 text-xs">
-            <summary className="cursor-pointer truncate rounded focus-visible:outline-ring">
-              Pinned messages ({visiblePins.length}) <span className="text-muted-foreground">· {previewText(visiblePins[0])}</span>
-            </summary>
-            <ul className="mt-1 max-h-20 space-y-1 overflow-y-auto" aria-label="Pinned messages">
-              {visiblePins.map((message) => (
-                <li key={message.messageId} className="flex items-center gap-2">
-                  <PushPinIcon className="size-3 shrink-0" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate">{previewText(message)}</span>
-                  {allowPin && <Button type="button" size="sm" variant="ghost"
-                    onClick={() => void togglePin(message.messageId, false)}>Unpin</Button>}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
+        }}><StarIcon aria-hidden /> <span className="sr-only lg:not-sr-only">Starred messages</span></Button>
         {directContact && blockedUsers && (
           <BlockUserAction name={directContact.name || directContact.username} blocked={blockedByYou}
             onChange={async (next) => {
@@ -611,7 +604,31 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
               else retryConnection()
             }} />
         )}
-      </div>
+        {room.type === 'group' && (
+          <Button type="button" variant="ghost" size="icon" className="size-8" aria-label="Group settings"
+            title="Group settings" onClick={onOpenGroupSettings}>
+            <GearSixIcon aria-hidden />
+          </Button>
+        )}
+      </header>
+      {pinError && <p role="alert" className="shrink-0 px-4 py-2 text-xs text-destructive">{pinError}</p>}
+      {visiblePins.length > 0 && (
+        <details className="min-w-0 shrink-0 border-b border-border px-4 py-2 text-xs">
+          <summary className="cursor-pointer truncate rounded focus-visible:outline-ring">
+            Pinned messages ({visiblePins.length}) <span className="text-muted-foreground">· {previewText(visiblePins[0])}</span>
+          </summary>
+          <ul className="mt-1 max-h-20 space-y-1 overflow-y-auto" aria-label="Pinned messages">
+            {visiblePins.map((message) => (
+              <li key={message.messageId} className="flex items-center gap-2">
+                <PushPinIcon className="size-3 shrink-0" aria-hidden />
+                <span className="min-w-0 flex-1 truncate">{previewText(message)}</span>
+                {allowPin && <Button type="button" size="sm" variant="ghost"
+                  onClick={() => void togglePin(message.messageId, false)}>Unpin</Button>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {directContact && blockListError && (
         <div className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1">
           <p role="alert" className="text-xs text-destructive">{blockListError}</p>
@@ -624,7 +641,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
           nameFor={nameFor} timeFormat={timeFormat} />
       )}
       <div ref={scrollport} onScroll={trackScroll} tabIndex={0} aria-label="Message history"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring [overflow-anchor:none]">
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring [overflow-anchor:none] [scrollbar-width:thin]">
         {nextCursor && (
           <div className="mb-4 flex justify-center">
             <Button type="button" size="sm" variant="outline" disabled={olderLoading} onClick={() => void loadOlder()}>
@@ -716,7 +733,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
           })}
         </ol>
       </div>
-      <div className="shrink-0 border-t border-border px-2 py-4 sm:px-4">
+      <div className="shrink-0 border-t border-border px-4 py-2">
         <p role="status" aria-atomic="true" className={cn(typingNames.length ? 'mb-2 truncate text-xs text-muted-foreground' : 'sr-only')}>
           {typingNames.length === 1 ? `${typingNames[0]} is typing…`
             : typingNames.length > 1 ? `${typingNames.join(', ')} are typing…` : ''}
@@ -763,11 +780,11 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
             {sending && <span role="status" className="text-xs text-muted-foreground">
               {attachment.uploaded ? 'Sending…' : 'Uploading…'}
             </span>}
-            <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 sm:size-9" aria-label="Remove attachment" disabled={sending}
+            <Button type="button" variant="ghost" size="icon" aria-label="Remove attachment" disabled={sending}
               onClick={() => { setAttachment(undefined); setSendError('') }}><XIcon aria-hidden /></Button>
           </div>
         )}
-        <form className="flex items-center gap-1 sm:gap-2" onSubmit={sendMessage}>
+        <form className="flex items-center gap-2" onSubmit={sendMessage}>
           <Input type="file" ref={filePicker} className="hidden" accept={attachmentAccept} disabled={blocked} aria-label="Choose an attachment"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0]
@@ -777,11 +794,11 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
               setSendError(error ?? '')
               if (!error) setAttachment({ file })
             }} />
-          <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 sm:size-9" aria-label="Attach a file" disabled={sending || blocked}
+          <Button type="button" variant="ghost" size="icon" aria-label="Attach a file" disabled={sending || blocked}
             onClick={() => filePicker.current?.click()}><PaperclipIcon aria-hidden /></Button>
           <Input ref={composer} aria-label="Message" placeholder="Write a message" value={draft} maxLength={maxMessageLength}
             onChange={(event) => updateDraft(event.target.value)} autoComplete="off" disabled={blocked} />
-          <Button type="submit" variant="soft" className="w-8 shrink-0 px-0 sm:w-auto sm:px-4"
+          <Button type="submit" variant="soft" className="px-3"
             disabled={!joined || blocked || (!draft.trim() && !attachment) || sending}>
             <PaperPlaneRightIcon aria-hidden />
             <span className="sr-only sm:not-sr-only">{sending ? 'Sending…' : 'Send'}</span>

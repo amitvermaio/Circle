@@ -6,8 +6,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme inline {
+/* Keep the app spacing available for the Chats layout to override. */
+@theme {
     --spacing: 0.5rem;
+}
+
+@theme inline {
     --font-sans: 'Manrope Variable', 'Manrope', ui-sans-serif, system-ui, sans-serif;
     --font-manrope: 'Manrope Variable', 'Manrope', ui-sans-serif, system-ui, sans-serif;
     --font-montserrat: 'Montserrat Variable', 'Montserrat', ui-sans-serif, system-ui, sans-serif;

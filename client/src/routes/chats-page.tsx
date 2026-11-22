@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, GearSixIcon, UsersIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, UsersIcon } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router'
 
@@ -100,102 +100,100 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
   }
 
   return (
-    <main className={cn('mx-auto flex max-w-6xl flex-col px-4 sm:px-8', roomId ? 'h-dvh' : 'min-h-svh')}>
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 py-6">
-        <h1 className="flex items-center gap-2 text-2xl font-medium tracking-tight sm:text-3xl">
-          <ChatsCircleIcon className="size-5" aria-hidden /> Chats
-        </h1>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <ThemeSwitcher />
-          <Button asChild variant="ghost" size="sm"><Link to="/profile">Profile</Link></Button>
-          <Button type="button" variant="outline" size="sm" onClick={handleLogout} disabled={busy}>Log out</Button>
-        </div>
-      </header>
-      <div className={cn(
-        'mb-6 overflow-hidden rounded-xl border border-border bg-card md:grid md:grid-cols-[minmax(16rem,21rem)_minmax(0,1fr)]',
-        roomId ? 'flex min-h-0 flex-1' : 'min-h-[28rem]',
+    <main className="grid h-dvh grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden [--spacing:0.25rem] md:grid-cols-[300px_minmax(0,1fr)]">
+      <aside aria-label="Chat sidebar" className={cn(
+        'min-h-0 min-w-0 overflow-y-auto overscroll-y-contain bg-card [scrollbar-width:thin] md:border-r md:border-border',
+        roomId && 'hidden md:block',
       )}>
-        <aside aria-label="Chat sidebar" className={cn('min-w-0 border-border md:border-r', roomId && 'hidden overflow-y-auto md:block')}>
-          <StoriesStrip contacts={contacts} currentUserId={currentUserId} />
-          <div className="space-y-2 border-b border-border px-4 py-4">
-            <h2 className="font-semibold">Conversations</h2>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="solid" onClick={() => setCreating('direct')}>New chat</Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setCreating('group')}>New group</Button>
-            </div>
+        <header className="flex h-12 items-center justify-between gap-2 border-b border-border px-4">
+          <h1 className="flex items-center gap-2 text-base font-semibold">
+            <ChatsCircleIcon className="size-5" aria-hidden /> Chats
+          </h1>
+          <div className="flex items-center">
+            <ThemeSwitcher className="size-8 [&_svg]:size-4" />
+            <Button asChild variant="ghost" size="sm"><Link to="/profile">Profile</Link></Button>
+            <Button type="button" variant="ghost" size="sm" onClick={handleLogout} disabled={busy}>Log out</Button>
           </div>
-          {loading && <p role="status" className="p-4 text-sm text-muted-foreground">Loading chats…</p>}
-          {error && (
-            <div className="space-y-2 p-4">
-              <p role="alert" className="text-sm text-destructive">{error}</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => {
-                setError('')
-                setLoading(true)
-                setAttempt(attempt + 1)
-              }}>Retry</Button>
-            </div>
-          )}
-          {!loading && !error && !rooms.length && (
-            <div className="px-4 py-8">
-              <ChatCircleIcon className="mb-3 size-5 text-muted-foreground" aria-hidden />
-              <p className="text-sm font-semibold">No conversations yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">Start a new chat to find someone by username.</p>
-            </div>
-          )}
-          {rooms.length > 0 && (
-            <nav aria-label="Conversations">
-              <ul className="space-y-1 p-2">
-                {rooms.map((room) => (
-                  <li key={room.roomId}>
-                    <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 px-2 py-2 text-left aria-[current=page]:bg-accent aria-[current=page]:text-brand">
-                      <NavLink to={`/chats/${encodeURIComponent(room.roomId)}`} end>
-                        <span className="grid size-9 shrink-0 place-items-center rounded-md border border-border" aria-hidden>
-                          {room.type === 'group' ? <UsersIcon /> : <ChatCircleIcon />}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{roomName(room)}</span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {room.lastMessage?.text || (room.type === 'group' ? `${room.participants.length} members` : room.directUser?.username ? `@${room.directUser.username}` : 'Direct chat')}
-                          </span>
-                        </span>
-                        {!!room.unreadCount && room.unreadCount > 0 && (
-                          <span aria-label={`${room.unreadCount} unread`} className="shrink-0 rounded-full border border-border px-2 text-xs tabular-nums">
-                            {room.unreadCount}
-                          </span>
-                        )}
-                      </NavLink>
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          )}
-        </aside>
-        {roomId ? (
-          <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="forest-header flex shrink-0 items-center gap-2 border-b border-border px-4 py-4">
-              <Button asChild variant="ghost" size="icon" className="md:hidden">
-                <Link to="/chats" aria-label="Back to chats"><ArrowLeftIcon aria-hidden /></Link>
-              </Button>
-              <h2 className="min-w-0 flex-1 truncate font-semibold">{selectedRoom ? roomName(selectedRoom) : 'Conversation'}</h2>
-              {selectedRoom?.type === 'group' && (
-                <Button type="button" variant="ghost" size="icon" aria-label="Group settings"
-                  onClick={() => setSettingsRoomId(roomId)}>
-                  <GearSixIcon aria-hidden />
-                </Button>
-              )}
-            </div>
-            {selectedRoom ? <ChatRoom key={roomId} roomId={roomId} room={selectedRoom} rooms={rooms} currentUserId={currentUserId} />
-              : <p className="p-4 text-sm text-muted-foreground">{loading ? 'Loading conversation…' : error || 'Conversation unavailable.'}</p>}
-          </section>
-        ) : (
-          <section className="hidden place-content-center justify-items-center gap-2 p-6 text-center md:grid">
-            <ChatsCircleIcon className="size-6 text-muted-foreground" aria-hidden />
-            <h2 className="text-lg font-medium">Select a conversation</h2>
-            <p className="text-sm text-muted-foreground">Choose a chat from the sidebar or start a new one.</p>
-          </section>
+        </header>
+        <StoriesStrip contacts={contacts} currentUserId={currentUserId} />
+        <div className="space-y-2 border-b border-border p-4">
+          <h2 className="text-sm font-semibold">Conversations</h2>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="solid" onClick={() => setCreating('direct')}>New chat</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setCreating('group')}>New group</Button>
+          </div>
+        </div>
+        {loading && <p role="status" className="p-4 text-sm text-muted-foreground">Loading chats…</p>}
+        {error && (
+          <div className="space-y-2 p-4">
+            <p role="alert" className="text-sm text-destructive">{error}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => {
+              setError('')
+              setLoading(true)
+              setAttempt(attempt + 1)
+            }}>Retry</Button>
+          </div>
         )}
-      </div>
+        {!loading && !error && !rooms.length && (
+          <div className="px-4 py-8">
+            <ChatCircleIcon className="mb-3 size-5 text-muted-foreground" aria-hidden />
+            <p className="text-sm font-semibold">No conversations yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">Start a new chat to find someone by username.</p>
+          </div>
+        )}
+        {rooms.length > 0 && (
+          <nav aria-label="Conversations">
+            <ul className="space-y-1 px-4 py-2">
+              {rooms.map((room) => (
+                <li key={room.roomId}>
+                  <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 px-2 py-2 text-left aria-[current=page]:bg-accent aria-[current=page]:text-brand">
+                    <NavLink to={`/chats/${encodeURIComponent(room.roomId)}`} end>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-md border border-border" aria-hidden>
+                        {room.type === 'group' ? <UsersIcon /> : <ChatCircleIcon />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{roomName(room)}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {room.lastMessage?.text || (room.type === 'group' ? `${room.participants.length} members` : room.directUser?.username ? `@${room.directUser.username}` : 'Direct chat')}
+                        </span>
+                      </span>
+                      {!!room.unreadCount && room.unreadCount > 0 && (
+                        <span aria-label={`${room.unreadCount} unread`} className="shrink-0 rounded-full border border-border px-2 text-xs tabular-nums">
+                          {room.unreadCount}
+                        </span>
+                      )}
+                    </NavLink>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
+      </aside>
+      {roomId ? (
+        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+          {selectedRoom ? (
+            <ChatRoom key={roomId} roomId={roomId} room={selectedRoom} rooms={rooms} currentUserId={currentUserId}
+              onOpenGroupSettings={() => setSettingsRoomId(roomId)} />
+          ) : (
+            <>
+              <header className="forest-header flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+                <Button asChild variant="ghost" size="icon" className="size-8 md:hidden">
+                  <Link to="/chats" aria-label="Back to chats"><ArrowLeftIcon aria-hidden /></Link>
+                </Button>
+                <h2 className="text-sm font-semibold">Conversation</h2>
+              </header>
+              <p className="p-4 text-sm text-muted-foreground">{loading ? 'Loading conversation…' : error || 'Conversation unavailable.'}</p>
+            </>
+          )}
+        </section>
+      ) : (
+        <section className="hidden min-w-0 place-content-center justify-items-center gap-2 p-6 text-center md:grid">
+          <ChatsCircleIcon className="size-6 text-muted-foreground" aria-hidden />
+          <h2 className="text-lg font-medium">Select a conversation</h2>
+          <p className="text-sm text-muted-foreground">Choose a chat from the sidebar or start a new one.</p>
+        </section>
+      )}
       {creating === 'direct' && <NewChatDialog onClose={() => setCreating(null)} onOpenRoom={openRoom} />}
       {creating === 'group' && <NewGroupDialog contacts={contacts} onClose={() => setCreating(null)} onRoomChanged={openRoom} />}
       {settingsRoomId && selectedRoom?.type === 'group' && settingsRoomId === selectedRoom.roomId && (

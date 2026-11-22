@@ -59,13 +59,13 @@ export function StoriesStrip({ contacts, currentUserId }: { contacts: ChatUser[]
   }, [])
 
   return (
-    <section aria-label="Stories" className="min-w-0 space-y-2 border-b border-border px-2 py-2 sm:px-4">
+    <section aria-label="Stories" className="min-w-0 space-y-2 border-b border-border p-4">
       <h2 className="text-sm font-semibold">Stories</h2>
-      <ul className="flex gap-1 overflow-x-auto overscroll-x-contain p-1">
+      <ul className="flex gap-2 overflow-x-auto overscroll-x-contain p-1 [scrollbar-width:thin]">
         <li className="shrink-0">
-          <Button type="button" variant="ghost" size="sm" className="h-auto w-10 flex-col gap-1 px-0 py-1"
+          <Button type="button" variant="ghost" size="sm" className="h-auto w-16 flex-col gap-2 px-1 py-1"
             onClick={() => { setPostNotice(''); setCreating(true) }}>
-            <span className="grid size-6 place-items-center rounded-full border border-dashed border-border">
+            <span className="grid size-8 place-items-center rounded-full border border-dashed border-border">
               <PlusIcon className="size-4" aria-hidden />
             </span>
             <span className="text-xs">Add story</span>
@@ -74,9 +74,9 @@ export function StoriesStrip({ contacts, currentUserId }: { contacts: ChatUser[]
         {items.map((item, index) => (
           <li key={item._id} className="shrink-0">
             <Button type="button" variant="ghost" size="sm" aria-label={`View ${item.own ? 'your story' : `story from ${item.author}`}`}
-              className="h-auto w-10 flex-col gap-1 px-0 py-1"
+              className="h-auto w-16 flex-col gap-2 px-1 py-1"
               onClick={() => setViewing({ items, index })}>
-              <span aria-hidden="true" className="grid size-6 place-items-center rounded-full border border-foreground/40 bg-muted">
+              <span aria-hidden="true" className="grid size-8 place-items-center rounded-full border border-foreground/40 bg-muted">
                 {item.own ? 'Y' : item.author.charAt(0).toUpperCase()}
               </span>
               <span className="max-w-full truncate text-xs">{item.author}</span>
