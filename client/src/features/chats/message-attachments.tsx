@@ -1,4 +1,4 @@
-import { Download } from 'lucide-react'
+import { DownloadSimpleIcon } from '@phosphor-icons/react'
 
 import { Button } from '@/components/ui/button'
 import type { MessageMedia } from '@/lib/socket'
@@ -44,7 +44,7 @@ export function MessageAttachments({ media }: { media: MessageMedia[] }) {
           <li key={key}>
             <Button asChild variant="outline" size="sm" className="h-auto max-w-full justify-start gap-2 py-1 text-left">
               <a href={url.href} download={name}>
-                <Download className="shrink-0" aria-hidden />
+                <DownloadSimpleIcon className="shrink-0" aria-hidden />
                 <span className="min-w-0 whitespace-normal break-all">
                   <span className="block">{name}</span>
                   <span className="block text-xs text-muted-foreground">{formatFileSize(attachment.size)}</span>

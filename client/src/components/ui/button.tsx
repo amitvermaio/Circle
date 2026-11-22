@@ -23,9 +23,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         soft: 'rounded-md bg-primary font-semibold text-primary-foreground hover:bg-primary/90',
-        solid: 'btn-asym bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-black dark:hover:bg-neutral-200',
+        solid: 'btn-asym bg-primary text-primary-foreground hover:bg-primary/90',
         outline:
-          'btn-asym-mirror border border-neutral-200 bg-transparent text-foreground hover:bg-neutral-100 dark:border-white/10 dark:hover:bg-black/90',
+          'btn-asym-mirror border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground',
         muted:
           'rounded-md bg-[#d4d4d866] font-montserrat text-[#52525b] hover:bg-[#d4d4d8] dark:bg-[#71717a33] dark:text-[#d4d4d8] dark:hover:bg-black/70',
         ghost: 'rounded-md text-foreground hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',

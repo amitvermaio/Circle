@@ -1,4 +1,4 @@
-import { Ellipsis } from 'lucide-react'
+import { DotsThreeIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -82,7 +82,7 @@ export function MessageMenu({ message, own, starred, pinned, canPin, joined, onR
   return (
     <DropdownMenu onOpenChange={(open) => { if (open) setNow(Date.now()) }}>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon" aria-label="Message actions"><Ellipsis aria-hidden /></Button>
+        <Button type="button" variant="ghost" size="icon" aria-label="Message actions"><DotsThreeIcon aria-hidden /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>React</DropdownMenuLabel>

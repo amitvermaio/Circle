@@ -1,4 +1,4 @@
-import { ArrowLeft, MessageCircle, MessagesSquare, Settings, UsersRound } from 'lucide-react'
+import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, GearSixIcon, UsersIcon } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router'
 
@@ -103,7 +103,7 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
     <main className={cn('mx-auto flex max-w-6xl flex-col px-4 sm:px-8', roomId ? 'h-dvh' : 'min-h-svh')}>
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 py-6">
         <h1 className="flex items-center gap-2 text-2xl font-medium tracking-tight sm:text-3xl">
-          <MessagesSquare className="size-5" aria-hidden /> Chats
+          <ChatsCircleIcon className="size-5" aria-hidden /> Chats
         </h1>
         <div className="flex items-center gap-1 sm:gap-2">
           <ThemeSwitcher />
@@ -137,7 +137,7 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
           )}
           {!loading && !error && !rooms.length && (
             <div className="px-4 py-8">
-              <MessageCircle className="mb-3 size-5 text-muted-foreground" aria-hidden />
+              <ChatCircleIcon className="mb-3 size-5 text-muted-foreground" aria-hidden />
               <p className="text-sm font-semibold">No conversations yet</p>
               <p className="mt-1 text-sm text-muted-foreground">Start a new chat to find someone by username.</p>
             </div>
@@ -150,7 +150,7 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
                     <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 px-2 py-2 text-left aria-[current=page]:bg-accent aria-[current=page]:text-accent-foreground">
                       <NavLink to={`/chats/${encodeURIComponent(room.roomId)}`} end>
                         <span className="grid size-9 shrink-0 place-items-center rounded-md border border-border" aria-hidden>
-                          {room.type === 'group' ? <UsersRound /> : <MessageCircle />}
+                          {room.type === 'group' ? <UsersIcon /> : <ChatCircleIcon />}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{roomName(room)}</span>
@@ -175,13 +175,13 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-4">
               <Button asChild variant="ghost" size="icon" className="md:hidden">
-                <Link to="/chats" aria-label="Back to chats"><ArrowLeft aria-hidden /></Link>
+                <Link to="/chats" aria-label="Back to chats"><ArrowLeftIcon aria-hidden /></Link>
               </Button>
               <h2 className="min-w-0 flex-1 truncate font-semibold">{selectedRoom ? roomName(selectedRoom) : 'Conversation'}</h2>
               {selectedRoom?.type === 'group' && (
                 <Button type="button" variant="ghost" size="icon" aria-label="Group settings"
                   onClick={() => setSettingsRoomId(roomId)}>
-                  <Settings aria-hidden />
+                  <GearSixIcon aria-hidden />
                 </Button>
               )}
             </div>
@@ -190,7 +190,7 @@ export function ChatsPage({ currentUserId, onLogout }: { currentUserId: string; 
           </section>
         ) : (
           <section className="hidden place-content-center justify-items-center gap-2 p-6 text-center md:grid">
-            <MessagesSquare className="size-6 text-muted-foreground" aria-hidden />
+            <ChatsCircleIcon className="size-6 text-muted-foreground" aria-hidden />
             <h2 className="text-lg font-medium">Select a conversation</h2>
             <p className="text-sm text-muted-foreground">Choose a chat from the sidebar or start a new one.</p>
           </section>

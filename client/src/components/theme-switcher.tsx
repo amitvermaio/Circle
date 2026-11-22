@@ -1,5 +1,5 @@
 import { useTheme } from '@/components/theme-provider'
-import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 /**
  * chaicode.com's half-shaded circle. One label for both themes: the server
@@ -9,15 +9,14 @@ import { cn } from '@/lib/utils'
 export function ThemeSwitcher({ className }: { className?: string }) {
   const { toggle } = useTheme()
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon"
       onClick={toggle}
       aria-label="Toggle theme"
       title="Toggle theme"
-      className={cn(
-        'inline-flex size-9 cursor-pointer items-center justify-center rounded-md text-foreground transition-colors duration-200 outline-none hover:text-brand focus-visible:ring-[3px] focus-visible:ring-ring/50',
-        className,
-      )}
+      className={className}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -36,6 +35,6 @@ export function ThemeSwitcher({ className }: { className?: string }) {
         <path d="M12 14.3l7.37 -7.37" />
         <path d="M12 19.6l8.85 -8.85" />
       </svg>
-    </button>
+    </Button>
   )
 }

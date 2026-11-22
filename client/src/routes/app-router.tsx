@@ -6,6 +6,7 @@ import { useAuthCheck } from '@/lib/use-auth-check'
 
 import { LoginPage, RegisterPage, VerifyOtpPage } from './auth-pages'
 import { ChatsPage } from './chats-page'
+import { HomePage } from './home-page'
 import { ProfilePage } from './profile-page'
 
 type RouteGuardProps = { authenticated: boolean; children: React.ReactNode }
@@ -40,6 +41,8 @@ export function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/" element={<Navigate to={authenticated ? '/chats' : '/home'} replace />} />
+        <Route path="/home" element={<GuestRoute authenticated={authenticated}><HomePage /></GuestRoute>} />
         <Route path="/login" element={<GuestRoute authenticated={authenticated}><LoginPage onSignIn={signIn} /></GuestRoute>} />
         <Route path="/register" element={<GuestRoute authenticated={authenticated}><RegisterPage /></GuestRoute>} />
         <Route path="/verify-otp" element={<GuestRoute authenticated={authenticated}><VerifyOtpPage onSignIn={signIn} /></GuestRoute>} />
@@ -49,7 +52,7 @@ export function AppRouter() {
         <Route path="/profile" element={<ProtectedRoute authenticated={authenticated}>
           {user && <ProfilePage user={user} onUserChange={updateUser} />}
         </ProtectedRoute>} />
-        <Route path="*" element={<Navigate to={authenticated ? '/chats' : '/login'} replace />} />
+        <Route path="*" element={<Navigate to={authenticated ? '/chats' : '/home'} replace />} />
       </Routes>
     </BrowserRouter>
   )

@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react'
+import { PlusIcon } from '@phosphor-icons/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -66,7 +66,7 @@ export function StoriesStrip({ contacts, currentUserId }: { contacts: ChatUser[]
           <Button type="button" variant="ghost" size="sm" className="h-auto w-10 flex-col gap-1 px-0 py-1"
             onClick={() => { setPostNotice(''); setCreating(true) }}>
             <span className="grid size-6 place-items-center rounded-full border border-dashed border-border">
-              <Plus className="size-4" aria-hidden />
+              <PlusIcon className="size-4" aria-hidden />
             </span>
             <span className="text-xs">Add story</span>
           </Button>

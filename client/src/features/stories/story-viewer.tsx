@@ -1,4 +1,4 @@
-import { ExternalLink, ImageOff, Pause, Play } from 'lucide-react'
+import { ArrowSquareOutIcon, ImageBrokenIcon, PauseIcon, PlayIcon } from '@phosphor-icons/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -20,7 +20,7 @@ function StoryMedia({ story }: { story: StoryItem }) {
   if (!url || failed) {
     return (
       <p className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
-        <ImageOff className="size-4" aria-hidden /> Media unavailable
+        <ImageBrokenIcon className="size-4" aria-hidden /> Media unavailable
       </p>
     )
   }
@@ -41,7 +41,7 @@ function StoryMedia({ story }: { story: StoryItem }) {
   return (
     <Button asChild variant="outline" size="sm">
       <a href={url.href} target="_blank" rel="noopener noreferrer">
-        <ExternalLink aria-hidden /> Open attachment
+        <ArrowSquareOutIcon aria-hidden /> Open attachment
       </a>
     </Button>
   )
@@ -82,7 +82,7 @@ function StorySlide({ story, onAdvance, onView }: {
           className="[&>div]:duration-100 motion-reduce:[&>div]:transition-none" />
         <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={paused ? 'Resume story' : 'Pause story'}
           onClick={() => setPaused(!paused)}>
-          {paused ? <Play aria-hidden /> : <Pause aria-hidden />}
+          {paused ? <PlayIcon aria-hidden /> : <PauseIcon aria-hidden />}
         </Button>
       </div>
       <StoryMedia story={story} />

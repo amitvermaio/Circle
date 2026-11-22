@@ -1,4 +1,4 @@
-import { ArrowDown, Check, CheckCheck, Paperclip, Pin, Search, Send, Star, X } from 'lucide-react'
+import { ArrowDownIcon, CheckIcon, ChecksIcon, PaperclipIcon, PushPinIcon, MagnifyingGlassIcon, PaperPlaneRightIcon, StarIcon, XIcon } from '@phosphor-icons/react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -578,14 +578,14 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
             setJumpError('')
             setSearchOpen((open) => !open)
           }}>
-          <Search aria-hidden /> <span className="sr-only sm:not-sr-only">{searchOpen ? 'Close search' : 'Search messages'}</span>
+          <MagnifyingGlassIcon aria-hidden /> <span className="sr-only sm:not-sr-only">{searchOpen ? 'Close search' : 'Search messages'}</span>
         </Button>
         <Button type="button" size="sm" variant="ghost" className="px-2" onClick={() => {
           setStarLoading(true)
           setStarError('')
           setStarRevision((value) => value + 1)
           setShowStars(true)
-        }}><Star aria-hidden /> <span className="sr-only sm:not-sr-only">Starred messages</span></Button>
+        }}><StarIcon aria-hidden /> <span className="sr-only sm:not-sr-only">Starred messages</span></Button>
         {pinError && <p role="alert" className="text-xs text-destructive">{pinError}</p>}
         {visiblePins.length > 0 && (
           <details className="min-w-0 flex-1 py-1 text-xs">
@@ -595,7 +595,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
             <ul className="mt-1 max-h-20 space-y-1 overflow-y-auto" aria-label="Pinned messages">
               {visiblePins.map((message) => (
                 <li key={message.messageId} className="flex items-center gap-2">
-                  <Pin className="size-3 shrink-0" aria-hidden />
+                  <PushPinIcon className="size-3 shrink-0" aria-hidden />
                   <span className="min-w-0 flex-1 truncate">{previewText(message)}</span>
                   {allowPin && <Button type="button" size="sm" variant="ghost"
                     onClick={() => void togglePin(message.messageId, false)}>Unpin</Button>}
@@ -676,15 +676,15 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
                           <TooltipTrigger asChild>
                             <span tabIndex={0} role="img" aria-label={status}
                               className={cn('inline-flex rounded focus-visible:outline-ring', status === 'Read' && 'text-blue-700 dark:text-blue-300')}>
-                              {status === 'Sent' ? <Check className="size-4" aria-hidden /> : <CheckCheck className="size-4" aria-hidden />}
+                              {status === 'Sent' ? <CheckIcon className="size-4" aria-hidden /> : <ChecksIcon className="size-4" aria-hidden />}
                             </span>
                           </TooltipTrigger>
                           <TooltipContent>{status}</TooltipContent>
                         </Tooltip>
                       )}
                       {message.editedAt && !message.deletedForEveryone && <span>Edited</span>}
-                      {starred && <Star className="size-3" aria-label="Starred" />}
-                      {pinned && <Pin className="size-3" aria-label="Pinned" />}
+                      {starred && <StarIcon className="size-3" aria-label="Starred" />}
+                      {pinned && <PushPinIcon className="size-3" aria-label="Pinned" />}
                     </div>
                     {!message.deletedForEveryone && (
                       <MessageMenu message={message} own={own} starred={starred} pinned={pinned} canPin={allowPin} joined={joined && !blocked}
@@ -723,7 +723,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
         </p>
         {!atLatest && (
           <Button type="button" size="sm" variant="ghost" className="mb-2" onClick={jumpToLatest}>
-            <ArrowDown aria-hidden /> Jump to latest
+            <ArrowDownIcon aria-hidden /> Jump to latest
           </Button>
         )}
         {blocked && (
@@ -750,12 +750,12 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
             <div className="min-w-0 flex-1">
               <QuotedMessage roomId={roomId} messageId={replySource.messageId} known={replySource} nameFor={nameFor} />
             </div>
-            <Button type="button" variant="ghost" size="icon" aria-label="Cancel reply" onClick={() => setReplyTo(undefined)}><X aria-hidden /></Button>
+            <Button type="button" variant="ghost" size="icon" aria-label="Cancel reply" onClick={() => setReplyTo(undefined)}><XIcon aria-hidden /></Button>
           </div>
         )}
         {attachment && (
           <div className="mb-2 flex items-center gap-2 rounded-md border border-border px-2 py-1 text-sm">
-            <Paperclip className="size-4 shrink-0" aria-hidden />
+            <PaperclipIcon className="size-4 shrink-0" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block truncate">{attachment.file.name}</span>
               <span className="block text-xs text-muted-foreground">{formatFileSize(attachment.file.size)}</span>
@@ -764,7 +764,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
               {attachment.uploaded ? 'Sending…' : 'Uploading…'}
             </span>}
             <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 sm:size-9" aria-label="Remove attachment" disabled={sending}
-              onClick={() => { setAttachment(undefined); setSendError('') }}><X aria-hidden /></Button>
+              onClick={() => { setAttachment(undefined); setSendError('') }}><XIcon aria-hidden /></Button>
           </div>
         )}
         <form className="flex items-center gap-1 sm:gap-2" onSubmit={sendMessage}>
@@ -778,12 +778,12 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
               if (!error) setAttachment({ file })
             }} />
           <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 sm:size-9" aria-label="Attach a file" disabled={sending || blocked}
-            onClick={() => filePicker.current?.click()}><Paperclip aria-hidden /></Button>
+            onClick={() => filePicker.current?.click()}><PaperclipIcon aria-hidden /></Button>
           <Input ref={composer} aria-label="Message" placeholder="Write a message" value={draft} maxLength={maxMessageLength}
             onChange={(event) => updateDraft(event.target.value)} autoComplete="off" disabled={blocked} />
           <Button type="submit" variant="soft" className="w-8 shrink-0 px-0 sm:w-auto sm:px-4"
             disabled={!joined || blocked || (!draft.trim() && !attachment) || sending}>
-            <Send aria-hidden />
+            <PaperPlaneRightIcon aria-hidden />
             <span className="sr-only sm:not-sr-only">{sending ? 'Sending…' : 'Send'}</span>
           </Button>
         </form>

@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react'
+import { MagnifyingGlassIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -83,7 +83,7 @@ export function NewChatDialog({ onClose, onOpenRoom }: Props) {
           }}
         />
         <Button type="submit" variant="outline" disabled={!query.trim().replace(/^@/, '').trim() || searching || opening !== null}>
-          <Search aria-hidden /> Search
+          <MagnifyingGlassIcon aria-hidden /> Search
         </Button>
       </form>
       {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
