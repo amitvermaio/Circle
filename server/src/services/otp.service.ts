@@ -22,8 +22,8 @@ export function verifyOtp(otp: string, otpHash: string): boolean {
 export async function sendRegistrationOtp(email: string, otp: string): Promise<void> {
   await sendMail({
     to: email,
-    subject: "Your Distributed Chat verification code",
-    html: `<h1>Verify your Distributed Chat account</h1>
+    subject: "Your Circle verification code",
+    html: `<h1>Verify your Circle account</h1>
 <p>Enter this six-digit code to finish creating your account:</p>
 <p style="font-size: 24px; letter-spacing: 0.15em"><strong>${otp}</strong></p>
 <p>This code expires in ${registrationOtpLifetimeMinutes} minutes.</p>`,

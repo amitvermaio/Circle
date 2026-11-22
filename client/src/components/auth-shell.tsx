@@ -42,7 +42,7 @@ export function AuthShell({
     <div className="flex min-h-dvh flex-col">
       <Backdrop />
       <header className="flex items-center justify-between px-6 py-5 sm:px-12">
-        <a href={homeHref} aria-label="Home" className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <a href={homeHref} aria-label="Circle home" className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
           <Logo />
         </a>
         <ThemeSwitcher />
@@ -59,7 +59,7 @@ export function AuthShell({
         </div>
       </main>
 
-      <footer className="px-6 py-6 text-center font-montserrat text-[13px] text-gray-500">© {new Date().getFullYear()} ChaiCode. All rights reserved.</footer>
+      <footer className="px-6 py-6 text-center font-montserrat text-[13px] text-gray-500">© {new Date().getFullYear()} Circle. All rights reserved.</footer>
     </div>
   )
 }

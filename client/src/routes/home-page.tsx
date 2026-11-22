@@ -1,5 +1,5 @@
 import {
-  ChatCircleIcon, ChatsCircleIcon, ChecksIcon, ImageIcon, PaperclipIcon, UsersThreeIcon, VideoCameraIcon,
+  ChatsCircleIcon, ChecksIcon, CircleIcon, ImageIcon, PaperclipIcon, UsersThreeIcon, VideoCameraIcon,
 } from '@phosphor-icons/react'
 import { Link } from 'react-router'
 
@@ -48,12 +48,12 @@ export function HomePage() {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-2 py-1 sm:px-4">
-        <ChatCircleIcon className="size-4 text-highlight" weight="duotone" aria-hidden />
+        <CircleIcon className="size-4 text-highlight" weight="bold" aria-hidden />
         <ThemeSwitcher />
       </header>
       <main className="mx-auto max-w-6xl px-2 pt-2 pb-4 sm:px-4 sm:pt-4 sm:pb-8">
         <Hero
-          title="Distributed Chat"
+          title="Circle"
           primary={<Button asChild variant="solid"><Link to="/register">Sign up</Link></Button>}
           secondary={<Button asChild variant="outline"><Link to="/login">Log in</Link></Button>}
           media={<ChatPreview />}
