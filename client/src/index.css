@@ -417,7 +417,7 @@
   .message-bubble.ring-2 .message-toolbar { opacity: 1; }
 }
 
-/* Match the landing page's sand surfaces even when the global theme is dark. */
+/* Share the landing page's light palette with chats and overlays. */
 :is(.chat-workspace, .light-overlay) {
   color-scheme: light;
   --background: var(--sand-beige);
@@ -467,3 +467,20 @@
   --secondary: var(--muted);
   --success: #28583c;
 }
+
+.dark .chat-workspace {
+  color-scheme: dark;
+  --background: #26231f;
+  --card: #332e28;
+  --foreground: var(--sand-beige);
+  --muted: #3e372f;
+  --muted-foreground: #c9bda9;
+  --accent: color-mix(in srgb, var(--card) 82%, var(--electric-purple));
+  --chat-selection: color-mix(in srgb, var(--card) 68%, var(--electric-purple));
+  --brand: var(--purple-on-forest);
+  --border: #575045;
+  --input: #9a8c77;
+  --destructive: #ffc1c6;
+  --success: #bfe1b0;
+}
+.dark .chat-workspace .message-bubble-image { background: var(--sand-beige); }

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
  * hydration.
  */
 export function ThemeSwitcher({ className }: { className?: string }) {
-  const { toggle } = useTheme()
+  const { theme, toggle } = useTheme()
   return (
     <Button
       type="button"
@@ -15,6 +15,7 @@ export function ThemeSwitcher({ className }: { className?: string }) {
       size="icon"
       onClick={toggle}
       aria-label="Toggle theme"
+      aria-pressed={theme === 'dark'}
       title="Toggle theme"
       className={className}
     >

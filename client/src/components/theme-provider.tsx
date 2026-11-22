@@ -1,4 +1,4 @@
-import { createContext, use, useCallback, useEffect, useMemo, useState } from 'react'
+import { createContext, use, useCallback, useLayoutEffect, useMemo, useState } from 'react'
 
 type Theme = 'dark' | 'light'
 
@@ -35,18 +35,17 @@ export function ThemeProvider({
   defaultTheme?: Theme
   storageKey?: string
 }) {
-  // The server cannot see localStorage, so start from the default and read
-  // the stored choice after mount. ThemeScript has already set the class,
-  // so nothing flashes in between.
-  const [theme, setThemeState] = useState<Theme>(defaultTheme)
+  const [theme, setThemeState] = useState(() => readStored(storageKey, defaultTheme))
 
-  useEffect(() => {
-    setThemeState(readStored(storageKey, defaultTheme))
-  }, [storageKey, defaultTheme])
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle('dark', theme === 'dark')
+    root.style.colorScheme = theme
 
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark')
-    document.documentElement.style.colorScheme = theme
+    return () => {
+      root.classList.remove('dark')
+      root.style.removeProperty('color-scheme')
+    }
   }, [theme])
 
   const setTheme = useCallback(
@@ -73,14 +72,4 @@ export function useTheme() {
   const ctx = use(ThemeContext)
   if (!ctx) throw new Error('useTheme must be used inside <ThemeProvider>')
   return ctx
-}
-
-/**
- * Sets the class before first paint. Put it in <head> (Next.js: in the root
- * layout, with `suppressHydrationWarning` on <html>). In a Vite app, the same
- * script can go straight into index.html.
- */
-export function ThemeScript({ defaultTheme = 'dark', storageKey = STORAGE_KEY }: { defaultTheme?: Theme; storageKey?: string }) {
-  const code = `(function(){try{var t=localStorage.getItem(${JSON.stringify(storageKey)});if(t!=='light'&&t!=='dark')t=${JSON.stringify(defaultTheme)};document.documentElement.classList.toggle('dark',t==='dark');document.documentElement.style.colorScheme=t}catch(e){}})()`
-  return <script dangerouslySetInnerHTML={{ __html: code }} />
 }

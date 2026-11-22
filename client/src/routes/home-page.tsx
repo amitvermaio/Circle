@@ -3,7 +3,6 @@ import {
 } from '@phosphor-icons/react'
 import { Link } from 'react-router'
 
-import { ThemeSwitcher } from '@/components/theme-switcher'
 import { Button } from '@/components/ui/button'
 
 const features = [
@@ -56,7 +55,6 @@ export function HomePage() {
               <Link to="/home" aria-current="page" className="hidden text-sm sm:block">Home</Link>
               <Button asChild variant="ghost" size="sm" className="rounded-full"><Link to="/login">Log in</Link></Button>
               <Button asChild variant="soft" size="sm" className="rounded-full"><Link to="/register">Sign up</Link></Button>
-              <ThemeSwitcher className="hidden size-8 [&_svg]:size-4 sm:inline-flex" />
             </div>
           </nav>
           <div className="circle-home-copy relative mx-auto max-w-4xl pt-24 text-center sm:pt-28">

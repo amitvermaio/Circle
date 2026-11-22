@@ -1,5 +1,6 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
 
+import { ThemeProvider } from '@/components/theme-provider'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { useAuthCheck } from '@/lib/use-auth-check'
@@ -46,12 +47,10 @@ export function AppRouter() {
         <Route path="/login" element={<GuestRoute authenticated={authenticated}><LoginPage onSignIn={signIn} /></GuestRoute>} />
         <Route path="/register" element={<GuestRoute authenticated={authenticated}><RegisterPage /></GuestRoute>} />
         <Route path="/verify-otp" element={<GuestRoute authenticated={authenticated}><VerifyOtpPage onSignIn={signIn} /></GuestRoute>} />
-        <Route path="/chats/:roomId?" element={<ProtectedRoute authenticated={authenticated}>
-          {user && <ChatsPage currentUserId={user.userId} onLogout={signOut} />}
-        </ProtectedRoute>} />
-        <Route path="/profile" element={<ProtectedRoute authenticated={authenticated}>
-          {user && <ProfilePage user={user} onUserChange={updateUser} />}
-        </ProtectedRoute>} />
+        <Route element={<ProtectedRoute authenticated={authenticated}><ThemeProvider><Outlet /></ThemeProvider></ProtectedRoute>}>
+          <Route path="/chats/:roomId?" element={user && <ChatsPage user={user} onLogout={signOut} />} />
+          <Route path="/profile" element={user && <ProfilePage user={user} onUserChange={updateUser} />} />
+        </Route>
         <Route path="*" element={<Navigate to={authenticated ? '/chats' : '/home'} replace />} />
       </Routes>
     </BrowserRouter>

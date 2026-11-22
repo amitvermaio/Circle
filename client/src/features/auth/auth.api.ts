@@ -5,6 +5,7 @@ export type AuthenticatedUser = {
   name: string
   email: string
   username: string
+  profilePhotoUrl?: string
 }
 
 export type RegisterInput = {
