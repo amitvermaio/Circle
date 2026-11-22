@@ -1,5 +1,8 @@
 import { io, type Socket } from 'socket.io-client'
 
+export type MessageMedia = { url: string; type: string; size: number }
+export type UploadedMedia = MessageMedia & { fileId: string }
+
 export type RoomMessage = {
   roomId: string
   messageId: string
@@ -13,7 +16,7 @@ export type RoomMessage = {
   deliveredTo?: string[]
   readBy?: string[]
   deletedForEveryone?: boolean
-  media?: { url: string }[]
+  media?: MessageMedia[]
 }
 
 type RoomPayload = { roomId: string }
@@ -41,7 +44,7 @@ type ChatSocket = Socket<
   {
     join_room: (payload: RoomPayload, acknowledge: Ack) => void
     leave_room: (payload: RoomPayload) => void
-    send_message: (payload: RoomPayload & { text: string; replyTo?: string }, acknowledge: Ack) => void
+    send_message: (payload: RoomPayload & { text: string; replyTo?: string; media?: UploadedMedia[] }, acknowledge: Ack) => void
     forward_message: (payload: { targetRoomId: string; messageId: string }, acknowledge: Ack) => void
     react_message: (payload: RoomPayload & { messageId: string; emoji: string }, acknowledge: Ack) => void
     typing: (payload: RoomPayload) => void

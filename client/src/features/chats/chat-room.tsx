@@ -1,16 +1,18 @@
-import { ArrowDown, Check, CheckCheck, Pin, Search, Send, Star, X } from 'lucide-react'
+import { ArrowDown, Check, CheckCheck, Paperclip, Pin, Search, Send, Star, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ApiError, getAuthToken } from '@/lib/api'
-import { connectSocket, getSocket, type MessageUpdate, type RoomMessage } from '@/lib/socket'
+import { connectSocket, getSocket, type MessageUpdate, type RoomMessage, type UploadedMedia } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 
 import { getGroupMembers, listRoomMessages, type ChatUser, type Room } from './chats.api'
+import { attachmentAccept, uploadAttachment, validateAttachment } from './media.api'
 import { actionError, maxMessageLength, MessageActionDialog, MessageMenu, MessageReactions, previewText,
   QuotedMessage, StarredMessagesDialog, type MessageAction } from './message-actions'
+import { formatFileSize, MessageAttachments } from './message-attachments'
 import { deleteRoomMessage, editRoomMessage, listPinnedMessages, listStarredMessages, setMessagePin, setMessageStar } from './messages.api'
 import { RoomSearch } from './room-search'
 import { useVisibleReads } from './use-visible-reads'
@@ -40,6 +42,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   const [socketError, setSocketError] = useState('')
   const [socketRetry, setSocketRetry] = useState(0)
   const [draft, setDraft] = useState('')
+  const [attachment, setAttachment] = useState<{ file: File; uploaded?: UploadedMedia }>()
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [atLatest, setAtLatest] = useState(true)
@@ -65,6 +68,8 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   const lastTypingAt = useRef(-Infinity)
   const currentUserRef = useRef(currentUserId)
   const composer = useRef<HTMLInputElement>(null)
+  const filePicker = useRef<HTMLInputElement>(null)
+  const sendRequest = useRef<AbortController | null>(null)
   const messageList = useRef<HTMLOListElement>(null)
   const scrollport = useRef<HTMLDivElement>(null)
   const stayAtLatest = useRef(true)
@@ -75,6 +80,9 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
   useEffect(() => {
     currentUserRef.current = currentUserId
   }, [currentUserId])
+
+  useEffect(() => () => sendRequest.current?.abort(), [roomId])
+
   const rosterKey = room.type === 'group' ? room.participants.join(',') : null
   const allowPin = !!currentUserId && (room.type === 'direct' || room.admins.includes(currentUserId))
   const known = new Map([...pins, ...messages].map((message) => [message.messageId, message]))
@@ -404,23 +412,46 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
     event.preventDefault()
     const text = draft.trim()
     const socket = getSocket()
-    if (!socket?.connected || !joined || !text || text.length > maxMessageLength || sending) return
+    if (!socket?.connected || !joined || (!text && !attachment) || text.length > maxMessageLength || sendRequest.current) return
 
+    const controller = new AbortController()
+    sendRequest.current = controller
     setSending(true)
     setSendError('')
+    let upload = attachment?.uploaded
     try {
-      const result = await socket.timeout(10_000).emitWithAck('send_message', { roomId, text, replyTo: replySource?.messageId })
+      if (attachment && !upload) {
+        upload = await uploadAttachment(attachment.file, controller.signal)
+        if (controller.signal.aborted) return
+        setAttachment({ file: attachment.file, uploaded: upload })
+      }
+      if (!socket.connected) {
+        setSendError('The chat connection was interrupted. Reconnect and try sending again.')
+        return
+      }
+      const result = await socket.timeout(10_000).emitWithAck('send_message', {
+        roomId, text, replyTo: replySource?.messageId, media: upload ? [upload] : undefined,
+      })
+      if (controller.signal.aborted) return
       if (result.success) {
         setDraft((current) => current.trim() === text ? '' : current)
+        setAttachment(undefined)
         setReplyTo((current) => current === replySource?.messageId ? undefined : current)
         if (stayAtLatest.current) jumpToLatest()
       } else {
-        setSendError('Could not send this message. Your draft is still here.')
+        setSendError(upload
+          ? 'The server rejected the message with its attachment. Try again or choose a different file.'
+          : 'Could not send this message. Your draft is still here.')
       }
-    } catch {
-      setSendError('Delivery could not be confirmed. Check the conversation before sending again.')
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setSendError(attachment && !upload
+          ? actionError(error, 'Could not upload the attachment. Try again.')
+          : 'Delivery could not be confirmed. Check the conversation before sending again.')
+      }
     } finally {
-      setSending(false)
+      sendRequest.current = null
+      if (!controller.signal.aborted) setSending(false)
     }
   }
 
@@ -545,6 +576,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
             const starred = visibleStars.some(({ messageId }) => messageId === message.messageId)
             const pinned = visiblePins.some(({ messageId }) => messageId === message.messageId)
             const unread = currentUserId && !own && !message.deletedForEveryone && !message.readBy?.includes(currentUserId)
+            const media = message.deletedForEveryone ? undefined : message.media
             const liveStatus = receipts[message.messageId]
             // In a group, a tick advances when at least one recipient confirms the status.
             const status = liveStatus === 'read' || message.readBy?.length ? 'Read'
@@ -553,7 +585,8 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
               <li key={message.messageId} data-message={message.messageId} data-unread-message-id={unread ? message.messageId : undefined}
                 className={cn('flex', own ? 'justify-end' : 'justify-start')}>
                 <article tabIndex={-1} className={cn('min-w-0 max-w-[85%] rounded-lg border border-border px-3 py-2',
-                  own && 'bg-accent', highlightedMessage === message.messageId && 'ring-2 ring-inset ring-ring')}>
+                  own && 'bg-accent', highlightedMessage === message.messageId && 'ring-2 ring-inset ring-ring',
+                  media?.some(({ type }) => type.startsWith('image/') || type === 'video/mp4') && 'w-md')}>
                   <div className="flex items-start gap-1 text-xs text-muted-foreground">
                     <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
                       <span className="break-words font-semibold">{nameFor(message.senderId)}</span>
@@ -590,9 +623,10 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
                     <QuotedMessage roomId={roomId} messageId={message.replyTo} known={known.get(message.replyTo)}
                       change={changes[message.replyTo]} nameFor={nameFor} />
                   )}
-                  <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-                    {previewText(message)}
-                  </p>
+                  {(!media?.length || message.text) && (
+                    <p className="mt-1 whitespace-pre-wrap break-words text-sm">{previewText(message)}</p>
+                  )}
+                  {!!media?.length && <MessageAttachments media={media} />}
                   {message.reactions && !message.deletedForEveryone && (
                     <MessageReactions reactions={message.reactions} nameFor={nameFor} />
                   )}
@@ -602,7 +636,7 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
           })}
         </ol>
       </div>
-      <div className="shrink-0 border-t border-border px-4 py-4">
+      <div className="shrink-0 border-t border-border px-2 py-4 sm:px-4">
         <p role="status" aria-atomic="true" className={cn(typingNames.length ? 'mb-2 truncate text-xs text-muted-foreground' : 'sr-only')}>
           {typingNames.length === 1 ? `${typingNames[0]} is typing…`
             : typingNames.length > 1 ? `${typingNames.join(', ')} are typing…` : ''}
@@ -633,10 +667,36 @@ export function ChatRoom({ roomId, room, rooms, currentUserId }: { roomId: strin
             <Button type="button" variant="ghost" size="icon" aria-label="Cancel reply" onClick={() => setReplyTo(undefined)}><X aria-hidden /></Button>
           </div>
         )}
-        <form className="flex items-center gap-2" onSubmit={sendMessage}>
+        {attachment && (
+          <div className="mb-2 flex items-center gap-2 rounded-md border border-border px-2 py-1 text-sm">
+            <Paperclip className="size-4 shrink-0" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate">{attachment.file.name}</span>
+              <span className="block text-xs text-muted-foreground">{formatFileSize(attachment.file.size)}</span>
+            </span>
+            {sending && <span role="status" className="text-xs text-muted-foreground">
+              {attachment.uploaded ? 'Sending…' : 'Uploading…'}
+            </span>}
+            <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 sm:size-9" aria-label="Remove attachment" disabled={sending}
+              onClick={() => { setAttachment(undefined); setSendError('') }}><X aria-hidden /></Button>
+          </div>
+        )}
+        <form className="flex items-center gap-1 sm:gap-2" onSubmit={sendMessage}>
+          <Input type="file" ref={filePicker} className="hidden" accept={attachmentAccept} aria-label="Choose an attachment"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              event.currentTarget.value = ''
+              if (!file || sendRequest.current) return
+              const error = validateAttachment(file)
+              setSendError(error ?? '')
+              if (!error) setAttachment({ file })
+            }} />
+          <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 sm:size-9" aria-label="Attach a file" disabled={sending}
+            onClick={() => filePicker.current?.click()}><Paperclip aria-hidden /></Button>
           <Input ref={composer} aria-label="Message" placeholder="Write a message" value={draft} maxLength={maxMessageLength}
             onChange={(event) => updateDraft(event.target.value)} autoComplete="off" />
-          <Button type="submit" variant="soft" className="w-10 px-0 sm:w-auto sm:px-4" disabled={!joined || !draft.trim() || sending}>
+          <Button type="submit" variant="soft" className="w-8 shrink-0 px-0 sm:w-auto sm:px-4"
+            disabled={!joined || (!draft.trim() && !attachment) || sending}>
             <Send aria-hidden />
             <span className="sr-only sm:not-sr-only">{sending ? 'Sending…' : 'Send'}</span>
           </Button>
