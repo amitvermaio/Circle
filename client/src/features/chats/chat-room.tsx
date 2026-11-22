@@ -667,8 +667,13 @@ export function ChatRoom({ roomId, room, rooms, currentUserId, onOpenGroupSettin
             {blocked ? 'No messages yet.' : 'No messages yet. Say hello.'}
           </p>
         )}
-        <ol ref={messageList} aria-label="Messages" className="space-y-4">
-          {visibleMessages.map((message) => {
+        <ol ref={messageList} aria-label="Messages" className="py-2">
+          {visibleMessages.map((message, index) => {
+            const previous = visibleMessages[index - 1]
+            // Messages from the same sender within five minutes form a visual group.
+            const grouped = previous?.senderId === message.senderId
+              && Date.parse(message.timestamp) - Date.parse(previous.timestamp) < 5 * 60_000
+            const hasReactions = !message.deletedForEveryone && Object.values(message.reactions ?? {}).some((ids) => ids.length > 0)
             const own = message.senderId === currentUserId
             const starred = visibleStars.some(({ messageId }) => messageId === message.messageId)
             const pinned = visiblePins.some(({ messageId }) => messageId === message.messageId)
@@ -680,29 +685,12 @@ export function ChatRoom({ roomId, room, rooms, currentUserId, onOpenGroupSettin
               : liveStatus === 'delivered' || message.deliveredTo?.length ? 'Delivered' : 'Sent'
             return (
               <li key={message.messageId} data-message={message.messageId} data-unread-message-id={unread ? message.messageId : undefined}
-                className={cn('flex', own ? 'justify-end' : 'justify-start')}>
-                <article tabIndex={-1} className={cn('min-w-0 max-w-[85%] rounded-lg border border-border px-3 py-2',
-                  own && 'bg-accent', highlightedMessage === message.messageId && 'ring-2 ring-inset ring-ring',
+                className={cn('message-row flex px-1', own ? 'justify-end' : 'justify-start', index > 0 && (grouped ? 'mt-1' : 'mt-4'))}>
+                <article tabIndex={-1} className={cn('message-bubble relative min-w-0 max-w-[70%] px-4 py-3',
+                  own ? 'message-bubble-outgoing' : 'message-bubble-incoming', hasReactions && 'mb-4', highlightedMessage === message.messageId && 'ring-2 ring-inset ring-ring',
                   media?.some(({ type }) => type.startsWith('image/') || type === 'video/mp4') && 'w-md')}>
-                  <div className="flex items-start gap-1 text-xs text-muted-foreground">
-                    <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
-                      <span className="break-words font-semibold">{nameFor(message.senderId)}</span>
-                      <time dateTime={message.timestamp}>{timeFormat.format(new Date(message.timestamp))}</time>
-                      {own && !message.deletedForEveryone && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span tabIndex={0} role="img" aria-label={status}
-                              className={cn('inline-flex rounded focus-visible:outline-ring', status === 'Read' && 'text-brand')}>
-                              {status === 'Sent' ? <CheckIcon className="size-4" aria-hidden /> : <ChecksIcon className="size-4" aria-hidden />}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>{status}</TooltipContent>
-                        </Tooltip>
-                      )}
-                      {message.editedAt && !message.deletedForEveryone && <span>Edited</span>}
-                      {starred && <StarIcon className="size-3" aria-label="Starred" />}
-                      {pinned && <PushPinIcon className="size-3" aria-label="Pinned" />}
-                    </div>
+                  {!own && !grouped && <p className="mb-1 break-words text-xs font-semibold">{nameFor(message.senderId)}</p>}
+                  <div className="message-toolbar">
                     {!message.deletedForEveryone && (
                       <MessageMenu message={message} own={own} starred={starred} pinned={pinned} canPin={allowPin} joined={joined && !blocked}
                         onReply={() => {
@@ -721,10 +709,29 @@ export function ChatRoom({ roomId, room, rooms, currentUserId, onOpenGroupSettin
                       change={changes[message.replyTo]} nameFor={nameFor} />
                   )}
                   {(!media?.length || message.text) && (
-                    <p className="mt-1 whitespace-pre-wrap break-words text-sm">{previewText(message)}</p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:anywhere]">
+                      {previewText(message)}
+                      {message.editedAt && !message.deletedForEveryone && <span className="ml-2 text-[11px] text-muted-foreground">edited</span>}
+                    </p>
                   )}
                   {!!media?.length && <MessageAttachments media={media} />}
-                  {message.reactions && !message.deletedForEveryone && (
+                  <div className="mt-1 flex flex-wrap items-center justify-end gap-1 text-[10px] text-muted-foreground">
+                      <time dateTime={message.timestamp}>{timeFormat.format(new Date(message.timestamp))}</time>
+                      {own && !message.deletedForEveryone && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span tabIndex={0} role="img" aria-label={status}
+                              className={cn('inline-flex rounded focus-visible:outline-ring', status === 'Read' && 'message-read')}>
+                              {status === 'Sent' ? <CheckIcon className="size-4" aria-hidden /> : <ChecksIcon className="size-4" aria-hidden />}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>{status}</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {starred && <StarIcon className="size-3" aria-label="Starred" />}
+                      {pinned && <PushPinIcon className="size-3" aria-label="Pinned" />}
+                  </div>
+                  {hasReactions && message.reactions && (
                     <MessageReactions reactions={message.reactions} nameFor={nameFor} />
                   )}
                 </article>

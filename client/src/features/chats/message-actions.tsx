@@ -55,7 +55,7 @@ export function QuotedMessage({ roomId, messageId, known, change, nameFor }: {
   const source = known ?? fetched
   const unavailable = change === null || change?.deletedForEveryone || source?.deletedForEveryone
   return (
-    <blockquote className="my-2 min-w-0 border-l-2 border-border pl-2 text-xs text-muted-foreground">
+    <blockquote className="message-quote my-2 min-w-0 rounded-lg border-l-2 border-border p-2 text-xs text-muted-foreground">
       {source && !unavailable && <span className="block truncate font-medium">{nameFor(source.senderId)}</span>}
       <p className="truncate">{unavailable ? 'Message unavailable' : source ? previewText({ ...source, ...change })
         : fetched === null ? 'Message unavailable' : 'Loading quoted message…'}</p>
@@ -82,7 +82,7 @@ export function MessageMenu({ message, own, starred, pinned, canPin, joined, onR
   return (
     <DropdownMenu onOpenChange={(open) => { if (open) setNow(Date.now()) }}>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon" aria-label="Message actions"><DotsThreeIcon aria-hidden /></Button>
+        <Button type="button" variant="ghost" size="icon" className="size-7 rounded-full" aria-label="Message actions"><DotsThreeIcon aria-hidden /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>React</DropdownMenuLabel>
@@ -111,13 +111,13 @@ export function MessageReactions({ reactions, nameFor }: { reactions: Record<str
   const [details, setDetails] = useState<string>()
   const people = details ? reactions[details] ?? [] : []
   return (
-    <div className="mt-2 flex flex-wrap gap-1">
+    <div className="message-reactions relative -mb-6 mt-2 flex flex-wrap gap-1">
       {Object.entries(reactions).filter(([, ids]) => ids.length > 0).map(([emoji, ids]) => {
         const title = emojiChoices.find(([value]) => value === emoji)?.[1] ?? emoji
         return (
           <Tooltip key={emoji}>
             <TooltipTrigger asChild>
-              <Button type="button" size="sm" variant="outline" aria-label={`${title}, ${ids.length} reactions`} onClick={() => setDetails(emoji)}>
+              <Button type="button" size="sm" variant="outline" className="h-6 rounded-full px-2 text-xs" aria-label={`${title}, ${ids.length} reactions`} onClick={() => setDetails(emoji)}>
                 {emoji} {ids.length}
               </Button>
             </TooltipTrigger>

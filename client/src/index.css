@@ -367,3 +367,52 @@
   background-image: radial-gradient(var(--sand-beige) 0.8px, transparent 0.8px);
   background-size: 24px 24px;
 }
+
+.message-bubble { border-radius: 18px; --ring: var(--purple-on-sand); }
+.message-bubble-outgoing {
+  /* Deepen the base purple slightly for readable white body text. */
+  background: color-mix(in srgb, var(--electric-purple) 90%, black);
+  color: white;
+  --foreground: white;
+  --muted-foreground: color-mix(in srgb, white 85%, var(--electric-purple));
+  --border: color-mix(in srgb, white 35%, transparent);
+  --ring: var(--sand-beige);
+  --brand: white;
+  --accent: color-mix(in srgb, var(--electric-purple) 75%, black);
+  border-bottom-right-radius: 5px;
+}
+.message-bubble-incoming {
+  background: color-mix(in srgb, var(--sand-beige) 75%, white);
+  color: var(--forest-green);
+  --foreground: var(--forest-green);
+  --muted-foreground: color-mix(in srgb, var(--forest-green) 85%, var(--sand-beige));
+  --border: color-mix(in srgb, var(--forest-green) 30%, transparent);
+  --brand: var(--purple-on-sand);
+  --accent: var(--sand-beige);
+  border-bottom-left-radius: 5px;
+}
+.message-quote { background: color-mix(in srgb, currentColor 8%, transparent); }
+.message-read { color: var(--sand-beige); }
+.message-toolbar {
+  position: absolute;
+  top: 4px;
+  right: calc(100% + 4px);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--card-foreground);
+  --foreground: var(--card-foreground);
+}
+.message-bubble-incoming .message-toolbar { right: auto; left: calc(100% + 4px); }
+.message-reactions {
+  --brand: var(--forest-green);
+  --accent: var(--sand-beige);
+  --border: color-mix(in srgb, var(--forest-green) 25%, transparent);
+}
+.message-reactions > button { background: var(--sand-beige); color: var(--forest-green); }
+@media (hover: hover) and (pointer: fine) {
+  .message-toolbar { opacity: 0; }
+  .message-row:hover .message-toolbar,
+  .message-bubble:focus-within .message-toolbar,
+  .message-toolbar:has([data-state="open"]),
+  .message-bubble.ring-2 .message-toolbar { opacity: 1; }
+}
