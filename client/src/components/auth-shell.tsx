@@ -101,9 +101,11 @@ export function PasswordInput(props: Omit<React.ComponentProps<'input'>, 'type'>
 }
 
 /** The one solid button on the page. Shows `busyLabel` while the request runs. */
-export function SubmitButton({ busy, busyLabel, children }: { busy: boolean; busyLabel: string; children: React.ReactNode }) {
+export function SubmitButton({ busy, busyLabel, children, disabled }: {
+  busy: boolean; busyLabel: string; children: React.ReactNode; disabled?: boolean
+}) {
   return (
-    <Button type="submit" variant="solid" size="lg" iconRight={null} className="w-full" disabled={busy} aria-busy={busy || undefined}>
+    <Button type="submit" variant="solid" size="lg" iconRight={null} className="w-full" disabled={busy || disabled} aria-busy={busy || undefined}>
       {busy ? busyLabel : children}
     </Button>
   )

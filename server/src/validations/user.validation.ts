@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { emailSchema } from "./auth.validation";
+
 export const usernameSchema = z
   .string()
   .min(3, "Username must be at least 3 characters")
@@ -7,6 +9,7 @@ export const usernameSchema = z
   .regex(/^[a-z0-9_]+$/, "Username may contain lowercase letters, digits, and underscores only");
 
 export const usernameAvailabilitySchema = z.object({ username: usernameSchema });
+export const emailAvailabilitySchema = z.object({ email: emailSchema });
 
 export const userSearchQuerySchema = z.object({
   query: z.string().trim().min(1, "Search must not be empty").max(50, "Search must be at most 50 characters"),

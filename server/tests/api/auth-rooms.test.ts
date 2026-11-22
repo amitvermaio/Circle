@@ -35,6 +35,17 @@ describe("authentication and rooms", () => {
     expect(response.body).toMatchObject({ success: false, error: { code: "VALIDATION_ERROR" } });
   });
 
+  it("reports email availability using the normalized email without exposing user data", async () => {
+    const { user } = await registerUser();
+    const path = "/api/v1/users/email-available";
+    await api.get(path).query({ email: "invalid" }).expect(400)
+      .expect(({ body }) => expect(body.error.code).toBe("VALIDATION_ERROR"));
+    await api.get(path).query({ email: ` ${user.email.toUpperCase()} ` }).expect(200).expect("Cache-Control", "no-store")
+      .expect(({ body }) => expect(body).toEqual({ success: true, data: { available: false } }));
+    await api.get(path).query({ email: "available+test@example.com" }).expect(200)
+      .expect(({ body }) => expect(body).toEqual({ success: true, data: { available: true } }));
+  });
+
   it("returns field-specific request errors before writing a pending registration", async () => {
     const { user } = await registerUser();
     for (const username of [registration.username, user.username]) {

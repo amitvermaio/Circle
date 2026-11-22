@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 
 import { UserModel } from "../models/user.model";
-import { updateProfileSchema, usernameAvailabilitySchema, userSearchQuerySchema } from "../validations/user.validation";
+import { emailAvailabilitySchema, updateProfileSchema, usernameAvailabilitySchema, userSearchQuerySchema } from "../validations/user.validation";
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -57,6 +57,26 @@ export async function usernameAvailable(request: Request, response: Response, ne
     const user = await UserModel.exists({ username: validation.data.username }).hint({ username: 1 });
 
     response.status(200).json({ available: user === null });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function emailAvailable(request: Request, response: Response, next: NextFunction): Promise<void> {
+  const validation = emailAvailabilitySchema.safeParse(request.query);
+  response.set("Cache-Control", "no-store");
+
+  if (!validation.success) {
+    response.status(400).json({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "Invalid email", details: validation.error.flatten() },
+    });
+    return;
+  }
+
+  try {
+    const user = await UserModel.exists({ email: validation.data.email }).hint({ email: 1 });
+    response.json({ success: true, data: { available: user === null } });
   } catch (error) {
     next(error);
   }

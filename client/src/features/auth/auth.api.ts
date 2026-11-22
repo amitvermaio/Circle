@@ -25,10 +25,14 @@ export function requestRegistrationOtp(input: RegisterInput): Promise<{ message:
   return api('/api/v1/auth/register/request-otp', { method: 'POST', body: input })
 }
 
-export function checkUsernameAvailability(username: string): Promise<{ available: boolean }> {
+export function checkUsernameAvailability(username: string, signal: AbortSignal): Promise<{ available: boolean }> {
   return api(`/api/v1/users/username-available?username=${encodeURIComponent(username)}`, {
-    responseType: 'raw',
+    responseType: 'raw', signal, cache: 'no-store',
   })
+}
+
+export function checkEmailAvailability(email: string, signal: AbortSignal): Promise<{ available: boolean }> {
+  return api(`/api/v1/users/email-available?email=${encodeURIComponent(email)}`, { signal, cache: 'no-store' })
 }
 
 export function verifyRegistrationOtp(email: string, otp: string): Promise<AuthResponse> {
