@@ -13,7 +13,7 @@ const storySchema = new Schema<Story>(
   {
     userId: { type: String, required: true },
     mediaUrl: { type: String, required: true },
-    caption: { type: String, required: true, default: "", trim: true, maxlength: 1_000 },
+    caption: { type: String, default: "", trim: true, maxlength: 1_000 },
     createdAt: { type: Date, required: true, default: Date.now, immutable: true },
     expiresAt: {
       type: Date,

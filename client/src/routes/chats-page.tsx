@@ -9,6 +9,7 @@ import { ChatRoom } from '@/features/chats/chat-room'
 import { listRooms, roomName, type Room } from '@/features/chats/chats.api'
 import { GroupSettingsDialog, NewGroupDialog } from '@/features/chats/group-dialogs'
 import { NewChatDialog } from '@/features/chats/new-chat-dialog'
+import { StoriesStrip } from '@/features/stories/stories-strip'
 import { ApiError, clearAuthToken, getAuthToken } from '@/lib/api'
 import { connectSocket, disconnectSocket } from '@/lib/socket'
 import { cn } from '@/lib/utils'
@@ -124,7 +125,8 @@ export function ChatsPage() {
         'mb-6 overflow-hidden rounded-xl border border-border bg-card md:grid md:grid-cols-[minmax(16rem,21rem)_minmax(0,1fr)]',
         roomId ? 'flex min-h-0 flex-1' : 'min-h-[28rem]',
       )}>
-        <aside aria-label="Chat sidebar" className={roomId ? 'hidden overflow-y-auto border-border md:block md:border-r' : 'border-border md:border-r'}>
+        <aside aria-label="Chat sidebar" className={cn('min-w-0 border-border md:border-r', roomId && 'hidden overflow-y-auto md:block')}>
+          <StoriesStrip contacts={contacts} currentUserId={currentUserId} />
           <div className="space-y-2 border-b border-border px-4 py-4">
             <h2 className="font-semibold">Conversations</h2>
             <div className="flex flex-wrap gap-2">
