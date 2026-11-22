@@ -324,3 +324,46 @@
       var(--electric-purple) 64%, var(--sand-beige) 88%);
   }
 }
+
+/* A consistent, light form surface across the authentication flow. */
+.circle-auth {
+  --background: var(--sand-beige);
+  --foreground: var(--forest-green);
+  --muted-foreground: color-mix(in srgb, var(--forest-green) 78%, var(--sand-beige));
+  --primary: var(--electric-purple);
+  --primary-foreground: var(--forest-green);
+  --primary-hover: var(--purple-on-forest);
+  --brand: var(--purple-on-sand);
+  --highlight: var(--purple-on-sand);
+  --ring: var(--purple-on-sand);
+  --input: color-mix(in srgb, var(--forest-green) 45%, var(--sand-beige));
+  --border: var(--input);
+  --accent: color-mix(in srgb, var(--sand-beige) 88%, var(--electric-purple));
+  --success: var(--forest-green);
+  --destructive: #a32335;
+  background: var(--background);
+  color: var(--foreground);
+}
+.circle-auth [data-slot="input"] {
+  background: color-mix(in srgb, var(--sand-beige) 70%, white);
+  height: 48px;
+}
+.circle-auth [data-slot="field"] > :not(:last-child) { margin-bottom: 8px; }
+.circle-auth-brand {
+  --highlight: var(--purple-on-forest);
+  --ring: var(--sand-beige);
+  color: var(--sand-beige);
+  background: linear-gradient(165deg, var(--forest-green) 25%,
+    color-mix(in srgb, var(--forest-green) 75%, var(--electric-purple)) 70%,
+    var(--electric-purple) 125%);
+}
+.circle-auth-brand::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.1;
+  background-image: radial-gradient(var(--sand-beige) 0.8px, transparent 0.8px);
+  background-size: 24px 24px;
+}

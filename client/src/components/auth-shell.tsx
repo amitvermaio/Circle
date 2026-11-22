@@ -4,21 +4,12 @@ import { EyeIcon, EyeSlashIcon, GithubLogoIcon, GoogleLogoIcon } from '@phosphor
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
-import { Backdrop } from '@/components/backdrop'
 import { Logo } from '@/components/logo'
-import { ThemeSwitcher } from '@/components/theme-switcher'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 
-/**
- * The pieces every auth page is made of. The page is quiet on purpose: the
- * background, the logo, one warm hairline card in the middle and nothing
- * else to look at. The submit button is the one solid button on the screen.
- *
- * Nothing here talks to a server. Each page takes an `onSubmit` that you
- * point at your auth provider; return a message to show it as an error.
- */
+/** Shared presentation and form controls for the authentication flow. */
 export type OAuthProvider = 'google' | 'github'
 
 /** Returns nothing on success, or a message to show the person. */
@@ -39,27 +30,31 @@ export function AuthShell({
   homeHref?: string
 }) {
   return (
-    <div className="flex min-h-dvh flex-col">
-      <Backdrop />
-      <header className="flex items-center justify-between px-6 py-5 sm:px-12">
-        <a href={homeHref} aria-label="Circle home" className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring">
-          <Logo />
+    <div className="circle-auth grid min-h-dvh [--spacing:0.25rem] lg:grid-cols-[42%_minmax(0,1fr)]">
+      <aside aria-label="Circle" className="circle-auth-brand relative isolate hidden min-h-dvh flex-col p-12 lg:flex">
+        <a href={homeHref} aria-label="Circle home" className="w-fit rounded-md focus-visible:outline-ring">
+          <Logo className="gap-2 [&>svg]:size-5" />
         </a>
-        <ThemeSwitcher />
-      </header>
-
-      <main className="flex flex-1 items-start justify-center px-6 pt-8 pb-16 sm:items-center sm:pt-0">
-        <div className="w-full max-w-sm">
-          <div className="mb-6 text-center">
-            <h1 className="text-2xl font-medium tracking-tight sm:text-3xl">{title}</h1>
-            {description && <p className="mt-2 text-sm text-muted-foreground sm:text-base">{description}</p>}
-          </div>
-          <div className="card-chai p-6 sm:p-8">{children}</div>
-          {below && <p className="mt-6 text-center text-sm text-muted-foreground">{below}</p>}
+        <div className="my-auto max-w-sm py-16">
+          <p className="font-onest text-4xl leading-tight font-semibold tracking-tight">Your people.<br />A little closer.</p>
+          <p className="mt-6 text-base leading-relaxed opacity-80">A place for the conversations and small moments you share.</p>
         </div>
+        <p className="text-xs opacity-70">Circle · Made for staying close.</p>
+      </aside>
+      <main className="flex min-w-0 flex-col px-6 py-8 sm:px-12">
+        <a href={homeHref} aria-label="Circle home" className="mb-10 w-fit rounded-md focus-visible:outline-ring lg:hidden">
+          <Logo className="gap-2 [&>svg]:size-5" />
+        </a>
+        <div className="mx-auto my-auto w-full max-w-[440px] py-8">
+          <header className="mb-8">
+            <h1 className="font-onest text-3xl font-semibold tracking-tight">{title}</h1>
+            {description && <p className="mt-4 break-words text-sm leading-relaxed text-muted-foreground">{description}</p>}
+          </header>
+          {children}
+          {below && <p className="mt-8 text-center text-sm text-muted-foreground">{below}</p>}
+        </div>
+        <footer className="pt-8 text-center text-xs text-muted-foreground">© {new Date().getFullYear()} Circle</footer>
       </main>
-
-      <footer className="px-6 py-6 text-center font-montserrat text-[13px] text-muted-foreground">© {new Date().getFullYear()} Circle. All rights reserved.</footer>
     </div>
   )
 }
@@ -107,7 +102,7 @@ export function SubmitButton({ busy, busyLabel, children, disabled }: {
   busy: boolean; busyLabel: string; children: React.ReactNode; disabled?: boolean
 }) {
   return (
-    <Button type="submit" variant="solid" size="lg" iconRight={null} className="w-full" disabled={busy || disabled} aria-busy={busy || undefined}>
+    <Button type="submit" variant="solid" size="lg" iconRight={null} className="h-12 w-full rounded-full" disabled={busy || disabled} aria-busy={busy || undefined}>
       {busy ? busyLabel : children}
     </Button>
   )
