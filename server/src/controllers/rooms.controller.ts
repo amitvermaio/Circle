@@ -2,7 +2,9 @@ import type { NextFunction, Request, Response } from "express";
 
 import { config } from "../config/config";
 import { redisPublisher } from "../config/redis";
+import { newDirectRoomRateLimiter } from "../middlewares/roomRateLimit.middleware";
 import { isBlockedEitherWay } from "../models/block.model";
+import { MessageModel } from "../models/message.model";
 import { RoomModel } from "../models/room.model";
 import { UserModel } from "../models/user.model";
 import {
@@ -33,14 +35,17 @@ async function ensureDirectConnections(creatorId: string, memberIds: string[]): 
   const uniqueMemberIds = [...new Set(memberIds)];
   const directRooms = await RoomModel.find({
     participants: creatorId,
-    $or: [{ type: "direct" }, { type: { $exists: false } }],
+    $and: [
+      { $or: [{ type: "direct" }, { type: { $exists: false } }] },
+      { $or: [{ status: "accepted" }, { status: { $exists: false } }] },
+    ],
   }).lean();
   const connectedUserIds = new Set(
     directRooms.flatMap((room) => room.participants.filter((participantId: string) => participantId !== creatorId)),
   );
 
   if (uniqueMemberIds.some((memberId) => !connectedUserIds.has(memberId))) {
-    throw createHttpError(403, "NOT_CONNECTED", "Every group member must already have a direct room with the creator");
+    throw createHttpError(403, "NOT_CONNECTED", "Every group member must have an accepted direct room with the inviter");
   }
 }
 
@@ -91,8 +96,15 @@ export async function createRoom(request: Request, response: Response, next: Nex
       throw createHttpError(404, "NOT_FOUND", "User not found");
     }
 
+    let limiterError: unknown;
+    await newDirectRoomRateLimiter(request, response, (error) => { limiterError = error; });
+    if (limiterError) throw limiterError;
+    if (response.headersSent) return;
+
     const room = await RoomModel.create({
       type: "direct",
+      status: "pending",
+      requestedBy: userId,
       participants: [userId, otherUserId],
       participantKey,
       admins: [],
@@ -279,7 +291,10 @@ export async function updateGroupRoom(request: Request, response: Response, next
 
 export async function listRooms(request: Request, response: Response, next: NextFunction): Promise<void> {
   try {
-    const rooms = await RoomModel.find({ participants: request.user!.userId }).sort({ createdAt: -1 });
+    const rooms = await RoomModel.find({
+      participants: request.user!.userId,
+      $or: [{ status: { $ne: "pending" } }, { requestedBy: request.user!.userId }],
+    }).sort({ createdAt: -1 });
 
     const directParticipantIds = rooms
       .filter((room) => room.type === "direct")
@@ -300,6 +315,87 @@ export async function listRooms(request: Request, response: Response, next: Next
   } catch (error) {
     next(error);
   }
+}
+
+export async function listRoomRequests(request: Request, response: Response, next: NextFunction): Promise<void> {
+  const userId = request.user!.userId;
+  try {
+    const rooms = await RoomModel.find({
+      participants: userId,
+      type: "direct",
+      status: "pending",
+      requestedBy: { $ne: userId },
+      declinedAt: { $exists: false },
+    }).sort({ createdAt: -1, _id: -1 });
+
+    const [senders, previews] = await Promise.all([
+      UserModel.find({ userId: { $in: rooms.map((room) => room.requestedBy) } })
+        .select("userId name username -_id").lean(),
+      MessageModel.aggregate<{ _id: string; text: string; senderId: string; timestamp: Date }>([
+        { $match: { roomId: { $in: rooms.map((room) => room.roomId) }, deletedFor: { $ne: userId }, deletedForEveryone: { $ne: true } } },
+        { $sort: { roomId: 1, timestamp: -1, _id: -1 } },
+        { $group: { _id: "$roomId", text: { $first: "$text" }, senderId: { $first: "$senderId" }, timestamp: { $first: "$timestamp" } } },
+        { $project: { text: { $substrCP: [{ $ifNull: ["$text", ""] }, 0, 160] }, senderId: 1, timestamp: 1 } },
+      ]),
+    ]);
+    const sendersById = new Map(senders.map((sender) => [sender.userId, sender]));
+    const previewsByRoomId = new Map(previews.map(({ _id, ...preview }) => [_id, preview]));
+
+    response.status(200).json({
+      success: true,
+      data: { rooms: rooms.map((room) => ({
+        ...room.toJSON(),
+        directUser: sendersById.get(room.requestedBy),
+        lastMessage: previewsByRoomId.get(room.roomId) ?? null,
+      })) },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function resolveRoomRequest(request: Request, response: Response, next: NextFunction, accept: boolean): Promise<void> {
+  const params = roomParamsSchema.safeParse(request.params);
+  if (!params.success) {
+    next(createHttpError(400, "VALIDATION_ERROR", "Invalid room ID"));
+    return;
+  }
+
+  const userId = request.user!.userId;
+  const roomFilter = { roomId: params.data.roomId, participants: userId };
+  try {
+    const room = await RoomModel.findOneAndUpdate(
+      { ...roomFilter, type: "direct", status: "pending", requestedBy: { $ne: userId }, declinedAt: { $exists: false } },
+      { $set: accept ? { status: "accepted" } : { declinedAt: new Date() } },
+      { returnDocument: "after", timestamps: accept },
+    );
+    if (!room) {
+      const current = await RoomModel.findOne(roomFilter).select("requestedBy").lean();
+      if (!current) throw createHttpError(404, "NOT_FOUND", "Room not found");
+      if (current.requestedBy === userId) {
+        throw createHttpError(403, "NOT_REQUEST_RECIPIENT", "Only the recipient can respond to a message request");
+      }
+      throw createHttpError(409, "REQUEST_NOT_PENDING", "This room has no pending request to respond to");
+    }
+
+    if (accept) {
+      await publishMembership(room.roomId, userId, "join", room.participants);
+      response.status(200).json({ success: true, data: { room: room.toJSON() } });
+    } else {
+      // Keep the decline private, including the sender-visible updatedAt timestamp.
+      response.status(200).json({ success: true, data: { declined: true } });
+    }
+  } catch (error) {
+    next(error);
+  }
+}
+
+export function acceptRoomRequest(request: Request, response: Response, next: NextFunction): Promise<void> {
+  return resolveRoomRequest(request, response, next, true);
+}
+
+export function declineRoomRequest(request: Request, response: Response, next: NextFunction): Promise<void> {
+  return resolveRoomRequest(request, response, next, false);
 }
 
 export async function getRoom(request: Request, response: Response, next: NextFunction): Promise<void> {

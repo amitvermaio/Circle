@@ -4,11 +4,13 @@ import { app } from "./app";
 import { config } from "./config/config";
 import { connectToDatabase } from "./config/mongodb";
 import { redisPublisher, redisSubscriber } from "./config/redis";
+import { migrateDirectRoomStatus } from "./services/roomStatusMigration.service";
 import { verifyMailTransport } from "./services/mail.service";
 import { initSocketServer } from "./socket/socket.server";
 
 async function startServer(): Promise<void> {
   await connectToDatabase();
+  await migrateDirectRoomStatus();
   await Promise.all([redisPublisher.connect(), redisSubscriber.connect()]);
 
   const httpServer = createServer(app);

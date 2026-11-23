@@ -4,6 +4,9 @@ export interface Room {
   roomId: string;
   type: "direct" | "group";
   participants: string[];
+  status: "pending" | "accepted";
+  requestedBy?: string;
+  declinedAt?: Date;
   participantKey?: string;
   name?: string;
   photoUrl?: string;
@@ -21,6 +24,9 @@ const roomSchema = new Schema<Room>(
       default: () => new Types.ObjectId().toString(),
     },
     type: { type: String, required: true, enum: ["direct", "group"], default: "direct" },
+    status: { type: String, required: true, enum: ["pending", "accepted"], default: "accepted" },
+    requestedBy: { type: String, required: function (this: Room) { return this.status === "pending"; } },
+    declinedAt: { type: Date, select: false },
     participants: {
       type: [String],
       required: true,
@@ -50,6 +56,9 @@ const roomSchema = new Schema<Room>(
 );
 
 roomSchema.pre("validate", function () {
+  if (this.type === "group" && this.status !== "accepted") {
+    this.invalidate("status", "Group rooms must be accepted");
+  }
   const hasValidParticipantCount = this.type === "group" ? this.participants.length >= 2 : this.participants.length === 2;
 
   if (!hasValidParticipantCount) {
@@ -64,6 +73,7 @@ roomSchema.set("toJSON", {
   transform: (_document, returnedRoom) => {
     const sanitizedRoom = returnedRoom as unknown as Record<string, unknown>;
     delete sanitizedRoom.participantKey;
+    delete sanitizedRoom.declinedAt;
     delete sanitizedRoom.__v;
     return returnedRoom;
   },

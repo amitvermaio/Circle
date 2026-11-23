@@ -59,6 +59,7 @@ describe("socket messaging", () => {
 
     const direct = await createDirect().expect(201);
     const roomId = direct.body.data.room.roomId as string;
+    await api.patch("/api/v1/rooms/" + roomId + "/accept").set(receiverHeaders).expect(200);
     const group = await api.post("/api/v1/rooms/groups").set(headers)
       .send({ name: "Planning", memberIds: [receiverId] }).expect(201);
     const groupId = group.body.data.room.roomId as string;
@@ -119,7 +120,8 @@ describe("socket messaging", () => {
     await api.post("/api/v1/rooms/groups").set(headers).send({ name: "Planning", memberIds: [member.user.userId] })
       .expect(403).expect(({ body }) => expect(body.error.code).toBe("NOT_CONNECTED"));
     for (const user of [member, invitee]) {
-      await api.post("/api/v1/rooms").set(headers).send({ otherUserId: user.user.userId }).expect(201);
+      const direct = await api.post("/api/v1/rooms").set(headers).send({ otherUserId: user.user.userId }).expect(201);
+      await api.patch("/api/v1/rooms/" + direct.body.data.room.roomId + "/accept").set(bearer(user.token)).expect(200);
     }
     const created = await api.post("/api/v1/rooms/groups").set(headers)
       .send({ name: "Planning", memberIds: [member.user.userId] }).expect(201);

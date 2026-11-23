@@ -20,3 +20,17 @@ function createAvailabilityRateLimiter(field: "username" | "email") {
 
 export const usernameAvailabilityRateLimiter = createAvailabilityRateLimiter("username");
 export const emailAvailabilityRateLimiter = createAvailabilityRateLimiter("email");
+
+export const userSearchRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  keyGenerator: (request) => request.user!.userId,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  handler: (_request, response) => {
+    response.status(429).json({
+      success: false,
+      error: { code: "RATE_LIMITED", message: "Too many user searches. Please try again later." },
+    });
+  },
+});
