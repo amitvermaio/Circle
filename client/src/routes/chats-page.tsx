@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, SignOutIcon, UserCircleIcon, UsersIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, TrayIcon, SignOutIcon, UserCircleIcon, UsersIcon } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 
@@ -7,7 +7,7 @@ import { ThemeSwitcher } from '@/components/theme-switcher'
 import { Button } from '@/components/ui/button'
 import { logout, type AuthenticatedUser } from '@/features/auth/auth.api'
 import { ChatRoom } from '@/features/chats/chat-room'
-import { listRooms, roomName, type Room } from '@/features/chats/chats.api'
+import { listRoomRequests, listRooms, roomName, type Room, type RoomRequest } from '@/features/chats/chats.api'
 import { GroupSettingsDialog, NewGroupDialog } from '@/features/chats/group-dialogs'
 import { NewChatDialog } from '@/features/chats/new-chat-dialog'
 import { StoriesStrip } from '@/features/stories/stories-strip'
@@ -15,12 +15,24 @@ import { ApiError, getAuthToken } from '@/lib/api'
 import { connectSocket, disconnectSocket } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 
+export type RequestsContext = {
+  requests: RoomRequest[]
+  loading: boolean
+  error: string
+  retry: () => void
+  onResolved: (roomId: string, acceptedRoom?: Room) => void
+}
+
 export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogout: () => void }) {
   const { userId: currentUserId } = user
   const accountName = user.name.trim() || user.username
   const navigate = useNavigate()
   const roomId = useMatch('/chats/:roomId')?.params.roomId
   const viewingProfile = !!useMatch('/profile')
+  const viewingRequests = !!useMatch('/requests')
+  const [requests, setRequests] = useState<RoomRequest[]>([])
+  const [requestsLoading, setRequestsLoading] = useState(true)
+  const [requestsError, setRequestsError] = useState('')
   const [busy, setBusy] = useState(false)
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
@@ -31,6 +43,42 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
   const selectedRoom = rooms.find((room) => room.roomId === roomId)
   const contacts = [...new Map(rooms.flatMap((room) => room.type === 'direct' && room.directUser
     ? [[room.directUser.userId, room.directUser] as const] : [])).values()]
+
+  const connectedContacts = contacts.filter(({ userId }) =>
+    rooms.some((room) => room.type === 'direct' && room.status !== 'pending' && room.directUser?.userId === userId))
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let inFlight = false
+    async function refreshRequests() {
+      if (inFlight || controller.signal.aborted) return
+      inFlight = true
+      try {
+        const { rooms } = await listRoomRequests(controller.signal)
+        if (controller.signal.aborted) return
+        setRequests(rooms)
+        setRequestsError('')
+      } catch (failure) {
+        if (!controller.signal.aborted) {
+          setRequestsError(failure instanceof ApiError ? failure.message : 'Could not load message requests.')
+        }
+      } finally {
+        inFlight = false
+        if (!controller.signal.aborted) setRequestsLoading(false)
+      }
+    }
+    void refreshRequests()
+    // New requests do not emit a membership event. Check for arrivals and preview updates.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshRequests()
+    }, 10_000)
+    window.addEventListener('focus', refreshRequests)
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshRequests)
+    }
+  }, [attempt, viewingRequests])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -85,9 +133,20 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
     setAttempt((value) => value + 1)
   }
 
+  function onRequestResolved(roomId: string, acceptedRoom?: Room) {
+    setRequests((current) => current.filter((room) => room.roomId !== roomId))
+    if (acceptedRoom) updateRoom(acceptedRoom)
+    else setAttempt((value) => value + 1)
+  }
+
   function openRoom(room: Room) {
-    updateRoom(room)
     setCreating(null)
+    if (room.status === 'pending' && room.requestedBy !== currentUserId) {
+      setAttempt((value) => value + 1)
+      navigate('/requests')
+      return
+    }
+    updateRoom(room)
     navigate(`/chats/${encodeURIComponent(room.roomId)}`)
   }
 
@@ -107,7 +166,7 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
     <main className="chat-workspace grid h-dvh grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden [--spacing:0.25rem] md:grid-cols-[300px_minmax(0,1fr)]">
       <aside aria-label="Chat sidebar" className={cn(
         'flex min-h-0 min-w-0 flex-col bg-card md:border-r md:border-border',
-        (roomId || viewingProfile) && 'hidden md:flex',
+        (roomId || viewingProfile || viewingRequests) && 'hidden md:flex',
       )}>
         <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
           <h1 className="flex items-center gap-2 text-base font-semibold">
@@ -118,7 +177,19 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
         <div aria-label="Chat sidebar content" className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [scrollbar-width:thin]">
           <StoriesStrip contacts={contacts} />
           <div className="space-y-2 border-b border-border p-4">
-            <h2 className="text-sm font-semibold">Conversations</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold">Conversations</h2>
+              <Button asChild variant="ghost" size="sm" className="gap-2 px-2">
+                <NavLink to="/requests" className="aria-[current=page]:bg-accent aria-[current=page]:text-brand">
+                  <TrayIcon className="size-4" aria-hidden /> Requests
+                  {requests.length > 0 && (
+                    <span aria-label={requests.length + ' pending'} className="rounded-full bg-accent px-2 text-xs tabular-nums text-brand">
+                      {requests.length}
+                    </span>
+                  )}
+                </NavLink>
+              </Button>
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" variant="solid" onClick={() => setCreating('direct')}>New chat</Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setCreating('group')}>New group</Button>
@@ -155,7 +226,7 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{roomName(room)}</span>
                           <span className="block truncate text-xs text-muted-foreground">
-                            {room.lastMessage?.text || (room.type === 'group' ? `${room.participants.length} members` : room.directUser?.username ? `@${room.directUser.username}` : 'Direct chat')}
+                            {room.status === 'pending' ? <span className="text-brand">Pending</span> : room.lastMessage?.text || (room.type === 'group' ? `${room.participants.length} members` : room.directUser?.username ? `@${room.directUser.username}` : 'Direct chat')}
                           </span>
                         </span>
                         {!!room.unreadCount && room.unreadCount > 0 && (
@@ -194,7 +265,12 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
           </div>
         </footer>
       </aside>
-      {viewingProfile ? <Outlet /> : roomId ? (
+      {viewingProfile || viewingRequests ? (
+        <Outlet context={{
+          requests, loading: requestsLoading, error: requestsError,
+          retry: () => setAttempt((value) => value + 1), onResolved: onRequestResolved,
+        } satisfies RequestsContext} />
+      ) : roomId ? (
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           {selectedRoom ? (
             <ChatRoom key={roomId} roomId={roomId} room={selectedRoom} rooms={rooms} currentUserId={currentUserId}
@@ -218,9 +294,9 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
         </section>
       )}
       {creating === 'direct' && <NewChatDialog onClose={() => setCreating(null)} onOpenRoom={openRoom} />}
-      {creating === 'group' && <NewGroupDialog contacts={contacts} onClose={() => setCreating(null)} onRoomChanged={openRoom} />}
+      {creating === 'group' && <NewGroupDialog contacts={connectedContacts} onClose={() => setCreating(null)} onRoomChanged={openRoom} />}
       {settingsRoomId && selectedRoom?.type === 'group' && settingsRoomId === selectedRoom.roomId && (
-        <GroupSettingsDialog key={settingsRoomId} room={selectedRoom} currentUserId={currentUserId} contacts={contacts}
+        <GroupSettingsDialog key={settingsRoomId} room={selectedRoom} currentUserId={currentUserId} contacts={connectedContacts}
           onClose={() => setSettingsRoomId(undefined)} onRoomChanged={updateRoom} />
       )}
     </main>

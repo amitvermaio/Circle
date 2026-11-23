@@ -15,9 +15,29 @@ export type Room = {
   participants: string[]
   admins: string[]
   createdBy: string
+  status?: 'pending' | 'accepted'
+  requestedBy?: string
   directUser?: ChatUser
   lastMessage?: { text?: string } | null
   unreadCount?: number
+}
+
+export type RoomRequest = Room & {
+  status: 'pending'
+  requestedBy: string
+  lastMessage: { text: string; senderId: string; timestamp: string } | null
+}
+
+export function listRoomRequests(signal: AbortSignal) {
+  return api<{ rooms: RoomRequest[] }>('/api/v1/rooms/requests', { signal, cache: 'no-store' })
+}
+
+export function acceptRoomRequest(roomId: string) {
+  return api<{ room: Room }>(roomPath(roomId) + '/accept', { method: 'PATCH' })
+}
+
+export function declineRoomRequest(roomId: string) {
+  return api<{ declined: true }>(roomPath(roomId) + '/decline', { method: 'PATCH' })
 }
 
 export function listRooms(signal: AbortSignal) {

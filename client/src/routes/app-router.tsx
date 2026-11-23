@@ -9,6 +9,7 @@ import { LoginPage, RegisterPage, VerifyOtpPage } from './auth-pages'
 import { ChatsPage } from './chats-page'
 import { HomePage } from './home-page'
 import { ProfilePage } from './profile-page'
+import { RequestsPage } from './requests-page'
 
 type RouteGuardProps = { authenticated: boolean; children: React.ReactNode }
 
@@ -50,6 +51,7 @@ export function AppRouter() {
         <Route element={<ProtectedRoute authenticated={authenticated}><ThemeProvider><Outlet /></ThemeProvider></ProtectedRoute>}>
           <Route element={user && <ChatsPage user={user} onLogout={signOut} />}>
             <Route path="/chats/:roomId?" element={null} />
+            <Route path="/requests" element={<RequestsPage />} />
             <Route path="/profile" element={user && <ProfilePage user={user} onUserChange={updateUser} />} />
           </Route>
         </Route>
