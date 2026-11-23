@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, TrayIcon, SignOutIcon, UserCircleIcon, UsersIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, SignOutIcon, UserCircleIcon, UserPlusIcon, UsersIcon } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 
@@ -181,7 +181,7 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
               <h2 className="text-sm font-semibold">Conversations</h2>
               <Button asChild variant="ghost" size="sm" className="gap-2 px-2">
                 <NavLink to="/requests" className="aria-[current=page]:bg-accent aria-[current=page]:text-brand">
-                  <TrayIcon className="size-4" aria-hidden /> Requests
+                  <UserPlusIcon className="size-4" aria-hidden /> Requests
                   {requests.length > 0 && (
                     <span aria-label={requests.length + ' pending'} className="rounded-full bg-accent px-2 text-xs tabular-nums text-brand">
                       {requests.length}
