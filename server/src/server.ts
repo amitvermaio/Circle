@@ -16,7 +16,7 @@ async function startServer(): Promise<void> {
   const httpServer = createServer(app);
   await initSocketServer(httpServer);
 
-  httpServer.listen(config.PORT, () => {
+  httpServer.listen(config.PORT, "0.0.0.0", () => {
     console.info(`Server listening on port ${config.PORT}`);
     void verifyMailTransport();
   });
