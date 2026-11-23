@@ -4,78 +4,65 @@ These rules apply only to work under `server/`.
 
 ## Structure and entry point
 
-- **Planned:** Implement the application entry point in `src/app.ts` and the HTTP/server bootstrap in `src/server.ts`.
-- **Current:** Backend source folders include `src/routes`, `src/controllers`, `src/models`, `src/socket`, `src/config`, `src/middleware`, and `src/validations`.
-- **Planned:** Keep HTTP route definitions in `src/routes`, Mongoose models in `src/models`, Socket.IO handlers in `src/socket`, and infrastructure/application configuration in `src/config`.
-- **Planned:** Keep Redis configuration in `src/config/redis.js`. Put MongoDB and all other configuration modules in `src/config`.
-- **Planned:** Outside `src/config`, name files as `<feature>.<folder>.ts`, for example `auth.controller.ts`, `auth.route.ts`, `auth.middleware.ts`, and `auth.validation.ts`.
-- **Current:** `auth.controller.ts`, `auth.middleware.ts`, `auth.route.ts`, and `auth.validation.ts` follow this naming convention, but are not implemented.
-- **Planned:** Rename or replace `src/config/redis.ts` with the required `src/config/redis.js`; configuration files are exempt from the TypeScript filename convention.
+- **Current:** `src/app.ts` configures Helmet, CORS, JSON parsing, `/health`, `/api/v1` routes, and centralized not-found/error middleware. `src/server.ts` connects MongoDB and both Redis clients before starting HTTP and Socket.IO.
+- **Current:** Keep HTTP route definitions in `src/routes`, controllers in `src/controllers`, Mongoose models in `src/models`, Socket.IO handlers in `src/socket`, validation schemas in `src/validations`, services in `src/services`, and infrastructure/application configuration in `src/config`.
+- **Current:** Outside `src/config`, name files as `<feature>.<folder>.ts`, for example `auth.controller.ts`, `auth.route.ts`, and `auth.validation.ts`. Configuration files are exempt.
+- **Current:** Environment is loaded and validated with Zod in `src/config/config.ts`. Do not read, edit, or commit `.env`.
 
 ## Redis and pub/sub
 
-- **Current:** `@upstash/redis` is installed, and `src/config/redis.ts` creates one `Redis` instance.
-- **Planned:** Use `@upstash/redis` for both publishing and subscribing, with separate connections such as `redisPublisher` and `redisSubscriber`.
-- **Planned:** Load Redis URL and token from environment-backed config. Never hard-code credentials.
-- **Planned:** Use namespaced channel names in `domain:resource` form, for example `chat:messages`.
-- **Planned:** Publish JSON object payloads with an explicit, stable shape. Chat messages must include at least:
-  ```ts
-  {
-    event: "new_message",
-    roomId: string,
-    messageId: string,
-    senderId: string,
-    text: string,
-    timestamp: string
-  }
-  ```
-- **Planned:** Validate incoming pub/sub payloads before broadcasting them to sockets.
+- **Current:** Use two separate `ioredis` connections from `src/config/redis.ts`: `redisPublisher` and `redisSubscriber`. A subscriber connection must not publish.
+- **Current:** Use namespaced channels: `chat:messages`, `chat:receipts`, `chat:typing`, and `chat:rooms`.
+- **Current:** Publish JSON objects with explicit `event` fields and validate every incoming Redis payload with Zod before emitting it to sockets.
+- **Rule:** Do not use `@socket.io/redis-adapter` or `@upstash/redis` for pub/sub.
 
 ## Socket.IO
 
-- **Current:** `socket.io` is installed and `src/socket/socket.server.ts` exists, but socket handling is not implemented.
-- **Planned:** Define all Socket.IO setup and handlers in `src/socket`.
-- **Planned:** Name socket events as `<verb>_<noun>` in lowercase snake case, such as `join_room`, `send_message`, and `new_message`.
-- **Planned:** Use JSON-object payloads with clear field names and TypeScript types. Do not use positional parameters except where explicitly documented.
-- **Planned:** `join_room` should use:
-  ```ts
-  { roomId: string }
-  ```
-- **Planned:** `send_message` should use:
-  ```ts
-  { roomId: string, text: string, user: { userId: string, username: string } }
-  ```
-- **Planned:** Persist valid messages before emitting `new_message`; use Redis pub/sub to distribute real-time events across server instances.
+- **Current:** Socket authentication reads the JWT from `socket.handshake.auth.token` and attaches `userId` to `socket.data`.
+- **Current:** Socket events are lowercase snake case and take JSON objects: `join_room`, `send_message`, `forward_message`, `react_message`, `message_read`, and `typing`.
+- **Current:** Socket event rate limits and typing throttles are intentionally in-memory per server instance; do not describe them as cross-instance limits.
+- **Rule:** Persist and validate a message before publishing it to Redis. Never emit directly from `send_message`; delivery occurs only in the Redis subscriber to prevent duplicates.
+- **Current:** `send_message` supports `replyTo` and verified media; `forward_message` preserves original-sender provenance; `react_message` allows only the validated emoji whitelist and one active reaction per user per message.
 
 ## MongoDB and chat data
 
-- **Current:** `mongoose` is installed, while `src/config/mongodb.ts` and `src/models/user.model.ts` are not implemented.
-- **Planned:** Load chat history through REST API endpoints. Use Socket.IO only for real-time conversation updates.
-- **Planned:** Create these Mongoose models in `src/models`:
-  - `user.model.ts`
-  - `room.model.ts`
-  - `message.model.ts`
-- **Planned:** `Message` must include `roomId`, `senderId`, `text`, `timestamp`, and appropriate metadata such as edit/deletion state or delivery metadata.
-- **Planned:** `Room` must include `roomId`, `participants: userId[]`, and appropriate metadata such as room name, creation time, and timestamps.
-- **Planned:** `User` must include `userId`, `username`, `email`, `passwordHash`, and appropriate metadata such as profile details and timestamps.
-- **Planned:** Add indexes appropriate to query patterns, including message history by `{ roomId, timestamp }`, unique user identifiers/emails, and unique room identifiers.
+- **Current:** `UserModel`, `RoomModel`, `MessageModel`, and `PendingRegistrationModel` live in `src/models` and use appropriate unique, participant, history, and TTL indexes.
+- **Current:** Load history and in-room search through REST; use Socket.IO only for real-time updates.
+- **Current:** Message history and search use timestamp cursors, default limit 30, and maximum limit 50. Search uses the `Message.text` text index.
+- **Current:** Message state includes edit/delete metadata, delivery/read arrays, replies, forwarding provenance, reactions, and verified media attachments.
+- **Rule:** Never return `text` for a message deleted for everyone. Exclude messages in `deletedFor` for the requesting user from history and search.
+- **Rule:** Edit and delete-for-everyone are sender-only and limited to 15 minutes from the immutable original timestamp. Delete-for-me adds the user to `deletedFor`.
+
+## Rooms and authorization
+
+- **Current:** One-to-one and group rooms are supported. Group membership and metadata changes are admin-only and fan out over `chat:rooms`.
+- **Rule:** Apply authentication to all room routes and verify room participation before access, message actions, search, or socket room joins. Return `404` for nonparticipants where exposing room existence would leak information.
+
+## Message requests
+
+- **Current:** Direct-room status is `pending` or `accepted`. New first-contact rooms created by `POST /api/v1/rooms` start pending and store the initiating user's ID in `requestedBy`. The same pair reuses the existing room regardless of status. The default and startup backfill treat legacy direct rooms as accepted, and groups are always accepted.
+- **Current:** `GET /api/v1/rooms` lists accepted rooms and the caller's outgoing pending rooms. `GET /api/v1/rooms/requests` lists only incoming pending direct rooms that the caller has yet to decline, newest first, with sender details and the latest visible message preview.
+- **Current:** Only the recipient can respond to an active pending request. `PATCH /api/v1/rooms/:roomId/accept` marks it accepted and publishes an `update_membership` event on `chat:rooms` for both participants. `PATCH /api/v1/rooms/:roomId/decline` records a private `declinedAt` timestamp and hides the request from the recipient. The room retains its pending status and messages, and the sender receives no decline notification.
+- **Rule:** Group creation and member invitations require an accepted direct room between the inviter and each invitee. Legacy direct rooms with no stored status are treated as accepted. Pending requests do not qualify.
+- **Current:** Pending status does not restrict room joins or messages. Normal authentication, participation, validation, and blocking checks still apply.
 
 ## Authentication and authorization
 
-- **Current:** `bcryptjs` and `jsonwebtoken` are installed. The auth route, controller, middleware, validation, and user model files are present but empty.
-- **Planned:** Implement registration, login, logout, password management, and JWT-protected routes.
-- **Planned:** Use one normal JWT only. Do not implement access-token/refresh-token pairs.
-- **Planned:** Issue JWTs with a one-day lifetime. After expiry, require the user to log in again.
-- **Planned:** Hash passwords with `bcryptjs` before storing them. Never return `passwordHash` in API responses.
-- **Planned:** Implement authentication middleware in `src/middleware/auth.middleware.ts` to verify the JWT and attach authenticated user data to the request.
-- **Planned:** Apply authorization checks so users can access only permitted rooms and resources.
+- **Current:** Registration uses email OTP verification before user creation. Login, logout, password change, profile editing, and username availability are implemented.
+- **Current:** Use a single JWT valid for one day. JWT payloads include `tokenVersion`; middleware rejects stale versions after logout or password changes. Do not add refresh tokens.
+- **Rule:** Hash passwords and OTPs before storage. Never expose `passwordHash`, `otpHash`, tokens, or stack traces in responses.
+
+## Media uploads
+
+- **Current:** `POST /api/v1/media/upload-url` is authenticated and returns ImageKit direct-upload authentication parameters plus a provider-side `checks` expression.
+- **Rule:** Allow only `image/jpeg`, `image/png`, `image/webp`, `video/mp4`, `application/pdf`, and `audio/webm`. The maximum size is 50 MiB; videos must not exceed that limit before upload or before message persistence.
+- **Rule:** Require `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, and `IMAGEKIT_URL_ENDPOINT` through Zod-validated environment configuration. Never commit their values.
+- **Rule:** Do not trust client-reported media type, URL, or size. Before saving a message, fetch the ImageKit file record and persist only provider-confirmed URL, MIME type, size, and the authenticated user's `/chat/<userId>/` folder ownership.
 
 ## Validation, errors, and API responses
 
-- **Current:** `src/validations/auth.validation.ts` exists but is empty. `zod` is not installed.
-- **Planned:** Add and use `zod` to validate incoming REST requests and relevant socket payloads.
-- **Planned:** Add centralized Express error-handling middleware that converts expected and unexpected errors into consistent responses.
-- **Planned:** Use one standard API response shape:
+- **Current:** Validate REST inputs and relevant socket/Redis payloads with Zod.
+- **Current:** Express error middleware returns a standard API shape:
   ```ts
   // Success
   { success: true, data: unknown, message?: string }
@@ -83,7 +70,7 @@ These rules apply only to work under `server/`.
   // Error
   { success: false, error: { code: string, message: string, details?: unknown } }
   ```
-- **Planned:** Return appropriate HTTP status codes and never expose internal stack traces, secrets, password hashes, or raw database errors.
+- **Rule:** Do not expose raw database errors, internal stack traces, secrets, password hashes, or OTP hashes.
 
 ## Out of scope
 

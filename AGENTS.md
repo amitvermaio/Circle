@@ -94,3 +94,6 @@ Don't build these, and don't create any files or routes for them.
 - Before committing, run `git status` and `git diff --stat` and list the files in your reply.
 - Never commit `.env`, `node_modules/`, or `dist/`. Stop and tell me if they appear in `git status`.
 - Don't push, rebase, or force anything. Only `git add` and `git commit`.
+
+
+- For client changes, run `pnpm build` in `client/` before committing.
