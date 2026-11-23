@@ -116,7 +116,7 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
           <ThemeSwitcher className="size-8 [&_svg]:size-4" />
         </header>
         <div aria-label="Chat sidebar content" className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [scrollbar-width:thin]">
-          <StoriesStrip contacts={contacts} currentUserId={currentUserId} />
+          <StoriesStrip contacts={contacts} />
           <div className="space-y-2 border-b border-border p-4">
             <h2 className="text-sm font-semibold">Conversations</h2>
             <div className="flex flex-wrap gap-2">

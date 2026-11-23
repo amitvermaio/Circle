@@ -10,8 +10,14 @@ export type Story = {
   expiresAt: string
 }
 
+export type OwnStory = Story & { viewerCount: number }
+
 export function listStories(signal: AbortSignal) {
   return api<{ stories: Story[] }>('/api/v1/stories', { signal })
+}
+
+export function listOwnStories(signal: AbortSignal) {
+  return api<{ stories: OwnStory[] }>('/api/v1/stories/me', { signal })
 }
 
 export function createStory(media: UploadedMedia, caption: string, signal: AbortSignal) {
@@ -20,4 +26,21 @@ export function createStory(media: UploadedMedia, caption: string, signal: Abort
 
 export function recordStoryView(storyId: string) {
   return api<{ viewed: boolean }>(`/api/v1/stories/${encodeURIComponent(storyId)}/views`, { method: 'POST' })
+}
+
+export type StoryViewerEntry = {
+  userId: string
+  username: string | null
+  name: string | null
+  viewedAt: string | null
+}
+
+export function listStoryViewers(storyId: string, signal: AbortSignal) {
+  return api<{ viewers: StoryViewerEntry[] }>(
+    '/api/v1/stories/' + encodeURIComponent(storyId) + '/viewers', { signal, cache: 'no-store' },
+  )
+}
+
+export function deleteStory(storyId: string) {
+  return api<{ deleted: true }>('/api/v1/stories/' + encodeURIComponent(storyId), { method: 'DELETE' })
 }

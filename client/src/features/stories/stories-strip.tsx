@@ -6,12 +6,12 @@ import type { ChatUser } from '@/features/chats/chats.api'
 import { ApiError } from '@/lib/api'
 
 import { CreateStoryDialog } from './create-story-dialog'
-import { listStories, recordStoryView, type Story } from './stories.api'
+import { listOwnStories, listStories, recordStoryView, type OwnStory, type Story } from './stories.api'
 import { StoryViewer, type StoryItem } from './story-viewer'
 
-export function StoriesStrip({ contacts, currentUserId }: { contacts: ChatUser[]; currentUserId?: string }) {
+export function StoriesStrip({ contacts }: { contacts: ChatUser[] }) {
   const [stories, setStories] = useState<Story[]>([])
-  const [posted, setPosted] = useState<Story[]>([])
+  const [ownStories, setOwnStories] = useState<OwnStory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -21,29 +21,34 @@ export function StoriesStrip({ contacts, currentUserId }: { contacts: ChatUser[]
   const [now, setNow] = useState(Date.now)
   const viewRequests = useRef(new Set<string>())
   const closeViewer = useCallback(() => setViewing(undefined), [])
+  const removeOwnStory = useCallback((storyId: string) => {
+    setOwnStories((stories) => stories.filter(({ _id }) => _id !== storyId))
+    closeViewer()
+    setAttempt((value) => value + 1)
+  }, [closeViewer])
 
   useEffect(() => {
     const controller = new AbortController()
-    void listStories(controller.signal).then(({ stories }) => {
+    void Promise.allSettled([listOwnStories(controller.signal), listStories(controller.signal)]).then(([own, contacts]) => {
       if (controller.signal.aborted) return
-      setStories(stories)
+      if (own.status === 'fulfilled') setOwnStories(own.value.stories)
+      if (contacts.status === 'fulfilled') setStories(contacts.value.stories)
+      const failure = own.status === 'rejected' ? own.reason : contacts.status === 'rejected' ? contacts.reason : undefined
+      setError(failure instanceof ApiError ? failure.message : failure ? 'Could not load stories.' : '')
       setNow(Date.now())
-      setLoading(false)
-    }).catch((failure: unknown) => {
-      if (controller.signal.aborted) return
-      setError(failure instanceof ApiError ? failure.message : 'Could not load stories.')
       setLoading(false)
     })
     return () => controller.abort()
   }, [attempt])
 
   const names = new Map(contacts.map(({ userId, name, username }) => [userId, name || username]))
-  const items = [...posted, ...stories].filter(({ expiresAt }) => Date.parse(expiresAt) > now)
-    .map((story): StoryItem => {
-      const own = story.userId === currentUserId || posted.includes(story)
-      return { ...story, own, author: own ? 'Your story' : names.get(story.userId) ?? `Contact ${story.userId.slice(-4)}` }
-    })
-  const nextExpiry = Math.min(...items.map(({ expiresAt }) => Date.parse(expiresAt)))
+  const isActive = ({ expiresAt }: Story) => Date.parse(expiresAt) > now
+  const ownItems = ownStories.filter(isActive)
+    .map((story): StoryItem => ({ ...story, own: true, author: 'Your story' }))
+  const contactItems = stories.filter(isActive).map((story): StoryItem => ({
+    ...story, own: false, author: names.get(story.userId) ?? 'Contact ' + story.userId.slice(-4),
+  }))
+  const nextExpiry = Math.min(...[...ownItems, ...contactItems].map(({ expiresAt }) => Date.parse(expiresAt)))
 
   useEffect(() => {
     if (!Number.isFinite(nextExpiry)) return
@@ -62,6 +67,16 @@ export function StoriesStrip({ contacts, currentUserId }: { contacts: ChatUser[]
     <section aria-label="Stories" className="min-w-0 space-y-2 border-b border-border p-4">
       <h2 className="text-sm font-semibold">Stories</h2>
       <ul className="flex gap-2 overflow-x-auto overscroll-x-contain p-1 [scrollbar-width:thin]">
+        {!!ownItems.length && (
+          <li className="shrink-0">
+            <Button type="button" variant="ghost" size="sm" aria-label="View your story"
+              className="h-auto w-16 flex-col gap-2 px-1 py-1"
+              onClick={() => setViewing({ items: ownItems, index: 0 })}>
+              <span aria-hidden className="grid size-8 place-items-center rounded-full border-2 border-brand bg-muted text-brand">Y</span>
+              <span className="text-xs">Your story</span>
+            </Button>
+          </li>
+        )}
         <li className="shrink-0">
           <Button type="button" variant="ghost" size="sm" className="h-auto w-16 flex-col gap-2 px-1 py-1"
             onClick={() => { setPostNotice(''); setCreating(true) }}>
@@ -71,13 +86,13 @@ export function StoriesStrip({ contacts, currentUserId }: { contacts: ChatUser[]
             <span className="text-xs">Add story</span>
           </Button>
         </li>
-        {items.map((item, index) => (
+        {contactItems.map((item, index) => (
           <li key={item._id} className="shrink-0">
-            <Button type="button" variant="ghost" size="sm" aria-label={`View ${item.own ? 'your story' : `story from ${item.author}`}`}
+            <Button type="button" variant="ghost" size="sm" aria-label={'View story from ' + item.author}
               className="h-auto w-16 flex-col gap-2 px-1 py-1"
-              onClick={() => setViewing({ items, index })}>
+              onClick={() => setViewing({ items: contactItems, index })}>
               <span aria-hidden="true" className="grid size-8 place-items-center rounded-full border border-foreground/40 bg-muted">
-                {item.own ? 'Y' : item.author.charAt(0).toUpperCase()}
+                {item.author.charAt(0).toUpperCase()}
               </span>
               <span className="max-w-full truncate text-xs">{item.author}</span>
             </Button>
@@ -98,13 +113,14 @@ export function StoriesStrip({ contacts, currentUserId }: { contacts: ChatUser[]
       {postNotice && <p role="status" className="text-xs text-muted-foreground">{postNotice}</p>}
       {creating && (
         <CreateStoryDialog onClose={() => setCreating(false)} onPosted={(story) => {
-          setPosted((current) => [story, ...current])
+          setOwnStories((current) => [{ ...story, viewerCount: 0 }, ...current.filter(({ _id }) => _id !== story._id)])
+          setAttempt((value) => value + 1)
           setNow(Date.now())
           setPostNotice('Story posted.')
           setCreating(false)
         }} />
       )}
-      {viewing && <StoryViewer stories={viewing.items} initialIndex={viewing.index} onClose={closeViewer} onView={onView} />}
+      {viewing && <StoryViewer stories={viewing.items} initialIndex={viewing.index} onClose={closeViewer} onView={onView} onDeleted={removeOwnStory} />}
     </section>
   )
 }
