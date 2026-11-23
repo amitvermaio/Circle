@@ -82,9 +82,18 @@ it("lets owners list, edit and delete their stories without changing the contact
 
     await StoryModel.updateOne({ _id: older._id }, { $addToSet: { viewedBy: contact.user.userId } });
     const olderPath = storiesPath + "/" + older._id;
-    await api.post(olderPath + "/views").set(contactHeaders).expect(200);
-    await api.get(olderPath + "/viewers").set(ownerHeaders).expect(200)
+    const legacyViewersPath = olderPath + "/viewers";
+    await api.get(legacyViewersPath).set(ownerHeaders).expect(200)
       .expect(({ body }) => expect(body.data.viewers).toEqual([{ ...firstView, viewedAt: null }]));
+    const beforeLegacyRevisit = Date.now();
+    await api.post(olderPath + "/views").set(contactHeaders).expect(200);
+    const revisited = (await api.get(legacyViewersPath).set(ownerHeaders).expect(200)).body.data.viewers;
+    expect(revisited).toEqual([{ ...firstView, viewedAt: expect.any(String) }]);
+    expect(Date.parse(revisited[0].viewedAt)).toBeGreaterThanOrEqual(beforeLegacyRevisit);
+    expect((await ownFeed())[1].viewerCount).toBe(1);
+    await api.post(olderPath + "/views").set(contactHeaders).expect(200);
+    await api.get(legacyViewersPath).set(ownerHeaders).expect(200)
+      .expect(({ body }) => expect(body.data.viewers).toEqual(revisited));
 
     await api.patch(storyPath).set(ownerHeaders).send({ caption: "x".repeat(1001) }).expect(400);
     await api.patch(storyPath).set(ownerHeaders).send({ caption: "Valid", mediaUrl: media.url }).expect(400);

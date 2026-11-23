@@ -216,9 +216,9 @@ export async function viewStory(request: Request, response: Response, next: Next
     const contactUserIds = await getContactUserIds(userId);
     const filter = { ...activeStory(storyId), userId: { $in: contactUserIds } };
 
-    // The predicate and push are atomic. Repeat and concurrent views preserve the first timestamp.
+    // The predicate and push are atomic. Legacy viewers can record their first timestamp on a new view.
     const result = await StoryModel.updateOne(
-      { ...filter, viewedBy: { $ne: userId }, "views.userId": { $ne: userId } },
+      { ...filter, "views.userId": { $ne: userId } },
       { $push: { views: { userId, viewedAt: new Date() } } },
     );
     if (result.matchedCount || await StoryModel.exists({ ...activeStory(storyId), userId: filter.userId })) {

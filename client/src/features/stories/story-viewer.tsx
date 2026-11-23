@@ -1,9 +1,10 @@
 import { ArrowSquareOutIcon, ImageBrokenIcon, PauseIcon, PlayIcon, TrashIcon } from '@phosphor-icons/react'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog } from '@/components/ui/dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Progress } from '@/components/ui/progress'
 import { parseMediaUrl } from '@/features/chats/media.api'
 
@@ -16,7 +17,7 @@ export type StoryItem = { author: string } & ((OwnStory & { own: true }) | (Stor
 const storyDurationMs = 6000
 const viewedAtFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
-function StoryViewers({ storyId, listId, onLoaded }: { storyId: string; listId: string; onLoaded: (count: number) => void }) {
+function StoryViewers({ storyId, onLoaded }: { storyId: string; onLoaded: (count: number) => void }) {
   const [viewers, setViewers] = useState<StoryViewerEntry[]>()
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -34,7 +35,7 @@ function StoryViewers({ storyId, listId, onLoaded }: { storyId: string; listId: 
   }, [attempt, onLoaded, storyId])
 
   return (
-    <section id={listId} aria-label="Story viewers" className="rounded-md border border-border bg-background p-3">
+    <>
       {error ? (
         <div className="flex items-center justify-between gap-2">
           <p role="alert" className="text-sm text-destructive">{error}</p>
@@ -45,7 +46,7 @@ function StoryViewers({ storyId, listId, onLoaded }: { storyId: string; listId: 
       ) : !viewers ? <p role="status" className="text-sm text-muted-foreground">Loading viewers…</p>
         : viewers.length === 0 ? <p className="text-sm text-muted-foreground">No views yet</p>
           : (
-            <ul className="max-h-40 divide-y divide-border overflow-y-auto">
+            <ul className="divide-y divide-border">
               {viewers.map(({ userId, name, username, viewedAt }) => {
                 const label = name || username || 'Unknown viewer'
                 return (
@@ -55,13 +56,13 @@ function StoryViewers({ storyId, listId, onLoaded }: { storyId: string; listId: 
                     </span>
                     <span className="min-w-0 flex-1 break-words text-sm font-medium">{label}</span>
                     {viewedAt ? <time dateTime={viewedAt} className="text-xs text-muted-foreground">{viewedAtFormat.format(new Date(viewedAt))}</time>
-                      : <span className="text-xs text-muted-foreground">Time unavailable</span>}
+                      : <span className="text-xs text-muted-foreground">Time not recorded</span>}
                   </li>
                 )
               })}
             </ul>
           )}
-    </section>
+    </>
   )
 }
 
@@ -110,7 +111,6 @@ function StorySlide({ story, onAdvance, onView }: {
   const elapsedRef = useRef(0)
   const [showViewers, setShowViewers] = useState(false)
   const [viewerCount, setViewerCount] = useState(story.own ? story.viewerCount : 0)
-  const viewersId = useId()
 
   useEffect(() => {
     if (!story.own) onView(story._id)
@@ -143,14 +143,16 @@ function StorySlide({ story, onAdvance, onView }: {
       </div>
       <StoryMedia story={story} />
       {story.own && (
-        <div className="space-y-2">
-          <Button type="button" variant="ghost" size="sm" className="text-brand"
-            aria-expanded={showViewers} aria-controls={showViewers ? viewersId : undefined}
-            onClick={() => setShowViewers(!showViewers)}>
-            {viewerCount} {viewerCount === 1 ? 'view' : 'views'}
-          </Button>
-          {showViewers && <StoryViewers storyId={story._id} listId={viewersId} onLoaded={setViewerCount} />}
-        </div>
+        <Popover open={showViewers} onOpenChange={setShowViewers}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="text-brand">
+              {viewerCount} {viewerCount === 1 ? 'view' : 'views'}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" aria-label="Story viewers" tabIndex={0}>
+            <StoryViewers storyId={story._id} onLoaded={setViewerCount} />
+          </PopoverContent>
+        </Popover>
       )}
       {story.caption && <p className="max-h-[16dvh] overflow-y-auto whitespace-pre-wrap break-words text-sm">{story.caption}</p>}
     </>

@@ -56,6 +56,7 @@ function Dialog({
     }, 30)
 
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
       if (e.key === 'Escape' && !busyRef.current) {
         e.preventDefault()
         closeRef.current()
