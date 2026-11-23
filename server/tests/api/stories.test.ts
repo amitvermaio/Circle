@@ -15,9 +15,13 @@ afterAll(async () => { await mongoose.disconnect(); });
 it("lets owners list, edit and delete their stories without changing the contacts feed", async () => {
   const owner = await registerUser();
   const contact = await registerUser();
+  const secondContact = await registerUser();
   const ownerHeaders = bearer(owner.token);
   const contactHeaders = bearer(contact.token);
-  await api.post("/api/v1/rooms").set(ownerHeaders).send({ otherUserId: contact.user.userId }).expect(201);
+  const secondContactHeaders = bearer(secondContact.token);
+  for (const viewer of [contact, secondContact]) {
+    await api.post("/api/v1/rooms").set(ownerHeaders).send({ otherUserId: viewer.user.userId }).expect(201);
+  }
 
   const imageKitFile = vi.spyOn(imageKit.files, "get").mockResolvedValue({
     ...media, mime: media.type, filePath: '/chat/' + owner.user.userId + '/image.png',
@@ -53,13 +57,40 @@ it("lets owners list, edit and delete their stories without changing the contact
       await api.post(storyPath + "/views").set(contactHeaders).expect(200)
         .expect(({ body }) => expect(body.data).toEqual({ viewed: true }));
     }
-    expect((await ownFeed())[0]).toEqual({ ...story, viewerCount: 1 });
+    const viewersPath = storyPath + "/viewers";
+    const firstView = (await api.get(viewersPath).set(ownerHeaders).expect(200)).body.data.viewers[0];
+    expect(firstView).toEqual({
+      userId: contact.user.userId, username: contact.user.username, name: contact.user.name, viewedAt: expect.any(String),
+    });
+    expect(Date.parse(firstView.viewedAt)).toBeGreaterThanOrEqual(Date.parse(story.createdAt));
+
+    const beforeSecondView = Date.now();
+    await api.post(storyPath + "/views").set(secondContactHeaders).expect(200);
+    await api.post(storyPath + "/views").set(contactHeaders).expect(200);
+    const secondView = {
+      userId: secondContact.user.userId, username: secondContact.user.username, name: secondContact.user.name,
+      viewedAt: expect.any(String),
+    };
+    const viewers = (await api.get(viewersPath).set(ownerHeaders).expect(200)).body.data.viewers;
+    expect(viewers).toEqual([secondView, firstView]);
+    expect(Date.parse(viewers[0].viewedAt)).toBeGreaterThanOrEqual(beforeSecondView);
+    expect(Date.parse(viewers[0].viewedAt)).toBeLessThanOrEqual(Date.now());
+    await api.get(viewersPath).set(contactHeaders).expect(403)
+      .expect(({ body }) => expect(body.error.code).toBe("STORY_NOT_OWNER"));
+    await api.get(viewersPath).expect(401);
+    expect((await ownFeed())[0]).toEqual({ ...story, viewerCount: 2 });
+
+    await StoryModel.updateOne({ _id: older._id }, { $addToSet: { viewedBy: contact.user.userId } });
+    const olderPath = storiesPath + "/" + older._id;
+    await api.post(olderPath + "/views").set(contactHeaders).expect(200);
+    await api.get(olderPath + "/viewers").set(ownerHeaders).expect(200)
+      .expect(({ body }) => expect(body.data.viewers).toEqual([{ ...firstView, viewedAt: null }]));
 
     await api.patch(storyPath).set(ownerHeaders).send({ caption: "x".repeat(1001) }).expect(400);
     await api.patch(storyPath).set(ownerHeaders).send({ caption: "Valid", mediaUrl: media.url }).expect(400);
     await api.patch(storyPath).set(ownerHeaders).send({ caption: "  Edited  " }).expect(200)
       .expect(({ body }) => expect(body.data.story).toEqual({ ...story, caption: "Edited" }));
-    expect((await ownFeed())[0]).toEqual({ ...story, caption: "Edited", viewerCount: 1 });
+    expect((await ownFeed())[0]).toEqual({ ...story, caption: "Edited", viewerCount: 2 });
     await expectOwnerExcluded();
 
     await api.patch(storyPath).set(contactHeaders).send({ caption: "Unauthorized" }).expect(403)
@@ -73,6 +104,7 @@ it("lets owners list, edit and delete their stories without changing the contact
       .expect(({ body }) => expect(body.data).toEqual({ deleted: true }));
     await api.patch(storyPath).set(ownerHeaders).send({ caption: "Deleted" }).expect(404);
     await api.delete(storyPath).set(ownerHeaders).expect(404);
+    await api.get(viewersPath).set(ownerHeaders).expect(404);
     expect(await ownFeed()).toEqual([expect.objectContaining({ _id: String(older._id) })]);
     await expectOwnerExcluded();
   } finally {

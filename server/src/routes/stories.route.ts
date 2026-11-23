@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { createStory, deleteStory, listOwnStories, listStories, updateStory, viewStory } from "../controllers/stories.controller";
+import { createStory, deleteStory, listOwnStories, listStories, updateStory, viewStory, listStoryViewers } from "../controllers/stories.controller";
 import { authenticate } from "../middlewares/auth.middleware";
 
 export const storiesRouter = Router();
@@ -12,3 +12,4 @@ storiesRouter.get("/me", listOwnStories);
 storiesRouter.patch("/:storyId", updateStory);
 storiesRouter.delete("/:storyId", deleteStory);
 storiesRouter.post("/:storyId/views", viewStory);
+storiesRouter.get("/:storyId/viewers", listStoryViewers);

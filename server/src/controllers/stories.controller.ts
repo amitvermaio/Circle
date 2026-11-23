@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 
 import { RoomModel } from "../models/room.model";
-import { StoryModel } from "../models/story.model";
+import { StoryModel, type Story } from "../models/story.model";
+import { UserModel } from "../models/user.model";
 import { verifyMediaAttachments } from "../services/media.service";
 import { createStorySchema, storyParamsSchema, updateStorySchema } from "../validations/story.validation";
 
@@ -65,11 +66,11 @@ export async function listOwnStories(request: Request, response: Response, next:
     const stories = await StoryModel.find({
       userId: request.user!.userId,
       expiresAt: { $gt: new Date() },
-    }).select("+viewedBy").sort({ createdAt: -1 });
+    }).select("+viewedBy +views").sort({ createdAt: -1 });
 
     response.status(200).json({
       success: true,
-      data: { stories: stories.map((story) => ({ ...story.toJSON(), viewerCount: story.viewedBy?.length ?? 0 })) },
+      data: { stories: stories.map((story) => ({ ...story.toJSON(), viewerCount: getStoryViews(story).size })) },
     });
   } catch (error) {
     next(error);
@@ -80,12 +81,17 @@ function activeStory(storyId: string) {
   return { _id: storyId, expiresAt: { $gt: new Date() } };
 }
 
-async function sendStoryMutationFailure(storyId: string, userId: string, response: Response): Promise<void> {
+async function sendStoryAccessFailure(
+  storyId: string,
+  userId: string,
+  response: Response,
+  message = "Only the story owner can make this change",
+): Promise<void> {
   const story = await StoryModel.findOne(activeStory(storyId)).select("userId").lean();
   if (story && story.userId !== userId) {
     response.status(403).json({
       success: false,
-      error: { code: "STORY_NOT_OWNER", message: "Only the story owner can make this change" },
+      error: { code: "STORY_NOT_OWNER", message },
     });
     return;
   }
@@ -116,7 +122,7 @@ export async function updateStory(request: Request, response: Response, next: Ne
       { new: true, runValidators: true },
     );
     if (!story) {
-      await sendStoryMutationFailure(storyId, userId, response);
+      await sendStoryAccessFailure(storyId, userId, response);
       return;
     }
     response.status(200).json({ success: true, data: { story: story.toJSON() } });
@@ -140,7 +146,7 @@ export async function deleteStory(request: Request, response: Response, next: Ne
     const userId = request.user!.userId;
     const result = await StoryModel.deleteOne({ ...activeStory(storyId), userId });
     if (!result.deletedCount) {
-      await sendStoryMutationFailure(storyId, userId, response);
+      await sendStoryAccessFailure(storyId, userId, response);
       return;
     }
     response.status(200).json({ success: true, data: { deleted: true } });
@@ -149,9 +155,53 @@ export async function deleteStory(request: Request, response: Response, next: Ne
   }
 }
 
+function getStoryViews(story: Pick<Story, "userId" | "viewedBy" | "views">): Map<string, Date | null> {
+  const views = new Map<string, Date | null>((story.viewedBy ?? []).map((userId) => [userId, null]));
+  for (const { userId, viewedAt } of story.views ?? []) views.set(userId, viewedAt);
+  views.delete(story.userId);
+  return views;
+}
+
+export async function listStoryViewers(request: Request, response: Response, next: NextFunction): Promise<void> {
+  const params = storyParamsSchema.safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "Invalid story ID", details: params.error.flatten() },
+    });
+    return;
+  }
+
+  try {
+    const userId = request.user!.userId;
+    const { storyId } = params.data;
+    const story = await StoryModel.findOne({ ...activeStory(storyId), userId })
+      .select("userId +viewedBy +views").lean<Pick<Story, "userId" | "viewedBy" | "views">>();
+    if (!story) {
+      await sendStoryAccessFailure(storyId, userId, response, "Only the story owner can see viewers");
+      return;
+    }
+
+    const views = getStoryViews(story);
+    const users = views.size ? await UserModel.find({ userId: { $in: [...views.keys()] } })
+      .select("userId username name -_id").lean() : [];
+    const profiles = new Map(users.map((user) => [user.userId, user]));
+    const viewers = [...views.entries()]
+      .sort(([, left], [, right]) => (right?.getTime() ?? -Infinity) - (left?.getTime() ?? -Infinity))
+      .map(([viewerId, viewedAt]) => ({
+        userId: viewerId,
+        username: profiles.get(viewerId)?.username ?? null,
+        name: profiles.get(viewerId)?.name ?? null,
+        viewedAt,
+      }));
+    response.status(200).json({ success: true, data: { viewers } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function viewStory(request: Request, response: Response, next: NextFunction): Promise<void> {
   const validation = storyParamsSchema.safeParse(request.params);
-
   if (!validation.success) {
     response.status(400).json({
       success: false,
@@ -162,31 +212,29 @@ export async function viewStory(request: Request, response: Response, next: Next
 
   try {
     const userId = request.user!.userId;
+    const { storyId } = validation.data;
     const contactUserIds = await getContactUserIds(userId);
-    const story = await StoryModel.findOneAndUpdate(
-      {
-        _id: validation.data.storyId,
-        userId: { $in: contactUserIds },
-        expiresAt: { $gt: new Date() },
-      },
-      { $addToSet: { viewedBy: userId } },
-      { new: true },
-    );
+    const filter = { ...activeStory(storyId), userId: { $in: contactUserIds } };
 
-    if (!story) {
-      // Owners can open their own stories without adding themselves to viewedBy.
-      if (await StoryModel.exists({ ...activeStory(validation.data.storyId), userId })) {
-        response.status(200).json({ success: true, data: { viewed: false } });
-        return;
-      }
-      response.status(404).json({
-        success: false,
-        error: { code: "NOT_FOUND", message: "Story not found" },
-      });
+    // The predicate and push are atomic. Repeat and concurrent views preserve the first timestamp.
+    const result = await StoryModel.updateOne(
+      { ...filter, viewedBy: { $ne: userId }, "views.userId": { $ne: userId } },
+      { $push: { views: { userId, viewedAt: new Date() } } },
+    );
+    if (result.matchedCount || await StoryModel.exists({ ...activeStory(storyId), userId: filter.userId })) {
+      response.status(200).json({ success: true, data: { viewed: true } });
       return;
     }
 
-    response.status(200).json({ success: true, data: { viewed: true } });
+    if (await StoryModel.exists({ ...activeStory(storyId), userId })) {
+      response.status(200).json({ success: true, data: { viewed: false } });
+      return;
+    }
+
+    response.status(404).json({
+      success: false,
+      error: { code: "NOT_FOUND", message: "Story not found" },
+    });
   } catch (error) {
     next(error);
   }

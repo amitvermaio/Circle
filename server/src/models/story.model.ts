@@ -1,13 +1,27 @@
 import { Schema, model, models } from "mongoose";
 
+interface StoryView {
+  userId: string;
+  viewedAt: Date;
+}
+
 export interface Story {
   userId: string;
   mediaUrl: string;
   caption: string;
   createdAt: Date;
   expiresAt: Date;
+  views: StoryView[];
   viewedBy: string[];
 }
+
+const storyViewSchema = new Schema<StoryView>(
+  {
+    userId: { type: String, required: true },
+    viewedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
 
 const storySchema = new Schema<Story>(
   {
@@ -20,6 +34,8 @@ const storySchema = new Schema<Story>(
       required: true,
       default: () => new Date(Date.now() + 24 * 60 * 60 * 1_000),
     },
+    views: { type: [storyViewSchema], default: [], select: false },
+    // Legacy viewer IDs had no timestamp. Keep them until their stories expire.
     viewedBy: { type: [String], required: true, default: [], select: false },
   },
   { timestamps: false },
@@ -33,6 +49,7 @@ storySchema.set("toJSON", {
     const sanitizedStory = returnedStory as unknown as Record<string, unknown>;
     delete sanitizedStory.__v;
     delete sanitizedStory.viewedBy;
+    delete sanitizedStory.views;
     return returnedStory;
   },
 });
