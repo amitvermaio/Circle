@@ -96,7 +96,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     const code = error?.code ?? 'REQUEST_FAILED'
     const message = error?.message ?? 'The request could not be completed.'
 
-    if (response.status === 401 && token === getAuthToken()) {
+    if (response.status === 401 && code !== 'INVALID_CREDENTIALS' && token === getAuthToken()) {
       clearAuthToken()
       if (options.redirectOnUnauthorized !== false) redirectToLogin()
     }

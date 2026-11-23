@@ -1,6 +1,6 @@
 import { ArrowLeftIcon, ChatCircleIcon, ChatsCircleIcon, SignOutIcon, UserCircleIcon, UsersIcon } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
-import { Link, NavLink, useNavigate, useParams } from 'react-router'
+import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router'
 
 import { Logo } from '@/components/logo'
 import { ThemeSwitcher } from '@/components/theme-switcher'
@@ -19,7 +19,8 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
   const { userId: currentUserId } = user
   const accountName = user.name.trim() || user.username
   const navigate = useNavigate()
-  const { roomId } = useParams()
+  const roomId = useMatch('/chats/:roomId')?.params.roomId
+  const viewingProfile = !!useMatch('/profile')
   const [busy, setBusy] = useState(false)
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
@@ -106,7 +107,7 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
     <main className="chat-workspace grid h-dvh grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden [--spacing:0.25rem] md:grid-cols-[300px_minmax(0,1fr)]">
       <aside aria-label="Chat sidebar" className={cn(
         'flex min-h-0 min-w-0 flex-col bg-card md:border-r md:border-border',
-        roomId && 'hidden md:flex',
+        (roomId || viewingProfile) && 'hidden md:flex',
       )}>
         <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
           <h1 className="flex items-center gap-2 text-base font-semibold">
@@ -183,7 +184,7 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Button asChild variant="ghost" size="sm" className="gap-2 border border-border px-2">
-              <Link to="/profile"><UserCircleIcon className="size-4" aria-hidden />Profile</Link>
+              <NavLink to="/profile" className="aria-[current=page]:bg-accent aria-[current=page]:text-brand"><UserCircleIcon className="size-4" aria-hidden />Profile</NavLink>
             </Button>
             <Button type="button" variant="ghost" size="sm"
               className="gap-2 border border-border px-2 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -193,7 +194,7 @@ export function ChatsPage({ user, onLogout }: { user: AuthenticatedUser; onLogou
           </div>
         </footer>
       </aside>
-      {roomId ? (
+      {viewingProfile ? <Outlet /> : roomId ? (
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           {selectedRoom ? (
             <ChatRoom key={roomId} roomId={roomId} room={selectedRoom} rooms={rooms} currentUserId={currentUserId}

@@ -29,8 +29,8 @@ export function BlockedUsersPanel() {
   }
 
   return (
-    <section className="card-chai min-w-0 p-4 sm:p-8 lg:col-span-2" aria-labelledby="blocked-users-heading">
-      <h2 id="blocked-users-heading" className="font-montserrat text-lg font-semibold">Blocked users</h2>
+    <section className="min-w-0 border-t border-border pt-8" aria-labelledby="blocked-users-heading">
+      <h3 id="blocked-users-heading" className="text-base font-semibold">Blocked users</h3>
       {!users && !loadError && <p role="status" className="mt-2 text-sm text-muted-foreground">Loading blocked users…</p>}
       {loadError && (
         <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -48,8 +48,10 @@ export function AppRouter() {
         <Route path="/register" element={<GuestRoute authenticated={authenticated}><RegisterPage /></GuestRoute>} />
         <Route path="/verify-otp" element={<VerifyOtpPage onSignIn={signIn} />} />
         <Route element={<ProtectedRoute authenticated={authenticated}><ThemeProvider><Outlet /></ThemeProvider></ProtectedRoute>}>
-          <Route path="/chats/:roomId?" element={user && <ChatsPage user={user} onLogout={signOut} />} />
-          <Route path="/profile" element={user && <ProfilePage user={user} onUserChange={updateUser} />} />
+          <Route element={user && <ChatsPage user={user} onLogout={signOut} />}>
+            <Route path="/chats/:roomId?" element={null} />
+            <Route path="/profile" element={user && <ProfilePage user={user} onUserChange={updateUser} />} />
+          </Route>
         </Route>
         <Route path="*" element={<Navigate to={authenticated ? '/chats' : '/home'} replace />} />
       </Routes>

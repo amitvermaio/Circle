@@ -1,7 +1,7 @@
+import { ArrowLeftIcon } from '@phosphor-icons/react'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 
-import { Backdrop } from '@/components/backdrop'
 import { PasswordInput, TextInput } from '@/components/auth-shell'
 import { ThemeSwitcher } from '@/components/theme-switcher'
 import { Button } from '@/components/ui/button'
@@ -22,11 +22,14 @@ function FormMessage({ message, tone = 'error' }: { message: string | null; tone
 export function ProfilePage({ user, onUserChange }: { user: AuthenticatedUser; onUserChange: (user: AuthenticatedUser) => void }) {
   const [name, setName] = useState(user.name)
   const [username, setUsername] = useState(user.username)
+  const [photoUrl, setPhotoUrl] = useState(user.profilePhotoUrl ?? '')
+  const [editingPhoto, setEditingPhoto] = useState(false)
   const [profileErrors, setProfileErrors] = useState<FieldErrors>({})
   const [profileMessage, setProfileMessage] = useState<string | null>(null)
   const [profileBusy, setProfileBusy] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [passwordErrors, setPasswordErrors] = useState<FieldErrors>({})
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null)
   const [passwordBusy, setPasswordBusy] = useState(false)
 
@@ -36,10 +39,17 @@ export function ProfilePage({ user, onUserChange }: { user: AuthenticatedUser; o
     setProfileErrors({})
     setProfileMessage(null)
     try {
-      const result = await updateProfile({ name, username })
+      const trimmedPhotoUrl = photoUrl.trim()
+      if (editingPhoto && !/^https?:\/\//i.test(trimmedPhotoUrl)) {
+        setProfileErrors({ profilePhotoUrl: ['Enter an image URL starting with http:// or https://.'] })
+        return
+      }
+      const result = await updateProfile({ name, username, profilePhotoUrl: editingPhoto ? trimmedPhotoUrl : undefined })
       onUserChange(result.user)
       setName(result.user.name)
       setUsername(result.user.username)
+      setPhotoUrl(result.user.profilePhotoUrl ?? '')
+      setEditingPhoto(false)
       setProfileMessage('Profile saved.')
     } catch (error) {
       const fieldErrors = getFieldErrors(error)
@@ -58,6 +68,7 @@ export function ProfilePage({ user, onUserChange }: { user: AuthenticatedUser; o
     event.preventDefault()
     setPasswordBusy(true)
     setPasswordMessage(null)
+    setPasswordErrors({})
     try {
       const result = await changePassword({ currentPassword, newPassword })
       setAuthToken(result.token)
@@ -66,58 +77,80 @@ export function ProfilePage({ user, onUserChange }: { user: AuthenticatedUser; o
       setNewPassword('')
       setPasswordMessage('Password changed. Your session is updated.')
     } catch (error) {
-      setPasswordMessage(getErrorMessage(error))
+      if (error instanceof ApiError && error.code === 'INVALID_CREDENTIALS') {
+        setPasswordErrors({ currentPassword: [error.message] })
+      } else {
+        const errors = getFieldErrors(error)
+        setPasswordErrors(errors)
+        if (!Object.keys(errors).length) setPasswordMessage(getErrorMessage(error))
+      }
     } finally {
       setPasswordBusy(false)
     }
   }
 
   return (
-    <div className="min-h-dvh">
-      <Backdrop />
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between p-4 sm:p-6">
-        <Button asChild type="button" variant="ghost"><Link to="/chats">Chats</Link></Button>
-        <ThemeSwitcher />
+    <section aria-labelledby="profile-heading" className="flex min-h-0 min-w-0 flex-col">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-4">
+        <Button asChild variant="ghost" size="icon" className="size-8 md:hidden">
+          <Link to="/chats" aria-label="Back to chats"><ArrowLeftIcon aria-hidden /></Link>
+        </Button>
+        <h2 id="profile-heading" className="flex-1 text-sm font-semibold">Profile and security</h2>
+        <ThemeSwitcher className="size-8 md:hidden [&_svg]:size-4" />
       </header>
-      <main className="mx-auto w-full max-w-6xl p-4 pb-12 sm:p-6 sm:pb-12">
-        <div className="mb-8">
-          <h1 className="text-2xl font-medium tracking-tight sm:text-3xl">Profile and security</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Manage your account details and password.</p>
-        </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [scrollbar-width:thin]">
+        <div className="mx-auto w-full max-w-[544px] space-y-8 px-4 py-6 sm:px-6 sm:py-8">
+          <section aria-labelledby="profile-details-heading">
+            <h3 id="profile-details-heading" className="text-base font-semibold">Account details</h3>
+            <form className="mt-4 space-y-4" onSubmit={submitProfile} noValidate>
+              <div className="flex items-center gap-4">
+                {user.profilePhotoUrl ? (
+                  <img src={user.profilePhotoUrl} alt="" className="size-20 shrink-0 rounded-full object-cover" />
+                ) : (
+                  <span aria-hidden className="grid size-20 shrink-0 place-items-center rounded-full bg-accent text-2xl font-semibold text-brand">
+                    {Array.from(user.name.trim() || user.username)[0]?.toLocaleUpperCase()}
+                  </span>
+                )}
+                <div className="min-w-0 space-y-2">
+                  <p className="break-all text-sm text-muted-foreground">{user.email}</p>
+                  <Button type="button" variant="outline" size="sm" className="rounded-md" aria-expanded={editingPhoto}
+                    onClick={() => { setPhotoUrl(user.profilePhotoUrl ?? ''); setEditingPhoto(!editingPhoto) }}>
+                    {editingPhoto ? 'Cancel photo change' : 'Change photo'}
+                  </Button>
+                </div>
+              </div>
+              {editingPhoto && (
+                <Field label="Photo URL" hint="Enter a direct link to an image." error={profileErrors.profilePhotoUrl?.[0]}>
+                  <TextInput type="url" value={photoUrl} maxLength={2000} onChange={(event) => setPhotoUrl(event.target.value)} />
+                </Field>
+              )}
+              <Field label="Name" error={profileErrors.name?.[0]}>
+                <TextInput name="name" autoComplete="name" value={name} maxLength={100} onChange={(event) => setName(event.target.value)} required />
+              </Field>
+              <Field label="Username" error={profileErrors.username?.[0]}>
+                <TextInput name="username" autoComplete="username" value={username} maxLength={20} onChange={(event) => setUsername(event.target.value.toLowerCase())} required />
+              </Field>
+              <FormMessage message={profileMessage} tone={profileMessage === 'Profile saved.' ? 'success' : 'error'} />
+              <Button type="submit" variant="soft" disabled={profileBusy} aria-busy={profileBusy || undefined}>Save profile</Button>
+            </form>
+          </section>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-            <section className="card-chai p-6 sm:p-8">
-              <h2 className="font-montserrat text-lg font-semibold">Profile</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Signed in as {user.email}</p>
-              <form className="mt-6 space-y-4" onSubmit={submitProfile} noValidate>
-                <Field label="Name" error={profileErrors.name?.[0]}>
-                  <TextInput name="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required />
-                </Field>
-                <Field label="Username" error={profileErrors.username?.[0]}>
-                  <TextInput name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} required />
-                </Field>
-                <FormMessage message={profileMessage} tone={profileMessage === 'Profile saved.' ? 'success' : 'error'} />
-                <Button type="submit" variant="solid" disabled={profileBusy} aria-busy={profileBusy || undefined}>Save profile</Button>
-              </form>
-            </section>
-
-            <section className="card-chai p-6 sm:p-8">
-              <h2 className="font-montserrat text-lg font-semibold">Change password</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Use a new password with at least eight characters.</p>
-              <form className="mt-6 space-y-4" onSubmit={submitPassword} noValidate>
-                <Field label="Current password">
-                  <PasswordInput name="currentPassword" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
-                </Field>
-                <Field label="New password">
-                  <PasswordInput name="newPassword" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required />
-                </Field>
-                <FormMessage message={passwordMessage} tone={passwordMessage === 'Password changed. Your session is updated.' ? 'success' : 'error'} />
-                <Button type="submit" variant="soft" disabled={passwordBusy} aria-busy={passwordBusy || undefined}>Change password</Button>
-              </form>
-            </section>
-            <BlockedUsersPanel />
+          <section className="border-t border-border pt-8" aria-labelledby="profile-password-heading">
+            <h3 id="profile-password-heading" className="text-base font-semibold">Change password</h3>
+            <form className="mt-4 space-y-4" onSubmit={submitPassword} noValidate>
+              <Field label="Current password" error={passwordErrors.currentPassword?.[0]}>
+                <PasswordInput name="currentPassword" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
+              </Field>
+              <Field label="New password" hint="Use at least eight characters." error={passwordErrors.newPassword?.[0]}>
+                <PasswordInput name="newPassword" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required />
+              </Field>
+              <FormMessage message={passwordMessage} tone={passwordMessage === 'Password changed. Your session is updated.' ? 'success' : 'error'} />
+              <Button type="submit" variant="soft" disabled={passwordBusy} aria-busy={passwordBusy || undefined}>Change password</Button>
+            </form>
+          </section>
+          <BlockedUsersPanel />
         </div>
-      </main>
-    </div>
+      </div>
+    </section>
   )
 }
