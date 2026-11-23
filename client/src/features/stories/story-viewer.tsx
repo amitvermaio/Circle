@@ -82,7 +82,12 @@ function StoryMedia({ story }: { story: StoryItem }) {
   const path = url.pathname.toLowerCase()
   const className = 'max-h-[48dvh] w-full rounded-md bg-muted object-contain'
   if (/\.(jpe?g|png|webp)$/.test(path)) {
-    return <img src={url.href} alt={label} className={className} onError={() => setFailed(true)} />
+    return (
+      <div className="px-3 sm:px-4">
+        <img src={url.href} alt={label} className="mx-auto block h-auto max-h-[48dvh] max-w-full rounded-md object-contain"
+          onError={() => setFailed(true)} />
+      </div>
+    )
   }
   if (path.endsWith('.mp4')) {
     return <video src={url.href} aria-label={label} controls playsInline preload="metadata"
@@ -101,9 +106,10 @@ function StoryMedia({ story }: { story: StoryItem }) {
   )
 }
 
-function StorySlide({ story, onAdvance, onView }: {
+function StorySlide({ story, onAdvance, onView, onDelete }: {
   story: StoryItem
   onAdvance: () => void
+  onDelete: () => void
   onView: (storyId: string) => void
 }) {
   const [elapsed, setElapsed] = useState(0)
@@ -143,16 +149,22 @@ function StorySlide({ story, onAdvance, onView }: {
       </div>
       <StoryMedia story={story} />
       {story.own && (
-        <Popover open={showViewers} onOpenChange={setShowViewers}>
-          <PopoverTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="text-brand">
-              {viewerCount} {viewerCount === 1 ? 'view' : 'views'}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" aria-label="Story viewers" tabIndex={0}>
-            <StoryViewers storyId={story._id} onLoaded={setViewerCount} />
-          </PopoverContent>
-        </Popover>
+        <div className="flex items-center justify-between gap-2">
+          <Popover open={showViewers} onOpenChange={setShowViewers}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="text-brand">
+                {viewerCount} {viewerCount === 1 ? 'view' : 'views'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" aria-label="Story viewers" tabIndex={0}>
+              <StoryViewers storyId={story._id} onLoaded={setViewerCount} />
+            </PopoverContent>
+          </Popover>
+          <Button type="button" variant="ghost" size="icon" aria-label="Delete story"
+            className="size-8 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDelete}>
+            <TrashIcon aria-hidden />
+          </Button>
+        </div>
       )}
       {story.caption && <p className="max-h-[16dvh] overflow-y-auto whitespace-pre-wrap break-words text-sm">{story.caption}</p>}
     </>
@@ -172,15 +184,20 @@ export function StoryViewer({ stories, initialIndex, onClose, onView, onDeleted 
   const [deleteError, setDeleteError] = useState('')
   const deletePending = useRef(false)
   const story = stories[index]
-  const next = useCallback(() => {
-    const nextIndex = stories.findIndex(({ expiresAt }, i) => i > index && Date.parse(expiresAt) > Date.now())
+  const findNextIndex = useCallback(
+    () => stories.findIndex(({ expiresAt }, i) => i > index && Date.parse(expiresAt) > Date.now()),
+    [index, stories],
+  )
+  const previousIndex = stories.findLastIndex(({ expiresAt }, i) => i < index && Date.parse(expiresAt) > Date.now())
+  const advance = useCallback(() => {
+    const nextIndex = findNextIndex()
     if (nextIndex < 0) onClose()
     else setIndex(nextIndex)
-  }, [index, onClose, stories])
+  }, [findNextIndex, onClose])
 
-  function previous() {
-    const previousIndex = stories.findLastIndex(({ expiresAt }, i) => i < index && Date.parse(expiresAt) > Date.now())
-    if (previousIndex >= 0) setIndex(previousIndex)
+  function next() {
+    const nextIndex = findNextIndex()
+    if (nextIndex >= 0) setIndex(nextIndex)
   }
 
   async function confirmDelete() {
@@ -215,18 +232,17 @@ export function StoryViewer({ stories, initialIndex, onClose, onView, onDeleted 
   return (
     <Dialog open onClose={onClose} title={story.author}>
       <div className="mt-2 space-y-2">
-        <StorySlide key={story._id} story={story} onAdvance={next} onView={onView} />
-        <div className="flex flex-wrap justify-between gap-1">
-          <Button type="button" variant="ghost" size="sm" className="px-2" disabled={index === 0} onClick={previous}>Previous</Button>
-          <Button type="button" variant="ghost" size="sm" className="px-2" onClick={onClose}>Close</Button>
-          {story.own && (
-            <Button type="button" variant="ghost" size="sm" className="px-2 text-muted-foreground"
-              onClick={() => { setDeleteError(''); setConfirming(true) }}>
-              <TrashIcon aria-hidden /> Delete
-            </Button>
-          )}
-          <Button type="button" variant={story.own ? 'soft' : 'ghost'} size="sm" className="px-2" onClick={next}>
-            {index < stories.length - 1 ? 'Next' : 'Done'}
+        <StorySlide key={story._id} story={story} onAdvance={advance} onView={onView}
+          onDelete={() => { setDeleteError(''); setConfirming(true) }} />
+        <div className="grid grid-cols-3 items-center gap-1">
+          <Button type="button" variant="ghost" size="sm" className="justify-self-start px-2"
+            disabled={previousIndex < 0} onClick={() => setIndex(previousIndex)}>
+            Previous
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="justify-self-center px-2" onClick={onClose}>Close</Button>
+          <Button type="button" variant="ghost" size="sm" className="justify-self-end px-2"
+            disabled={findNextIndex() < 0} onClick={next}>
+            Next
           </Button>
         </div>
       </div>
