@@ -3,7 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import { RoomModel } from "../models/room.model";
 import { StoryModel } from "../models/story.model";
 import { verifyMediaAttachments } from "../services/media.service";
-import { createStorySchema, storyParamsSchema } from "../validations/story.validation";
+import { createStorySchema, storyParamsSchema, updateStorySchema } from "../validations/story.validation";
 
 export async function createStory(request: Request, response: Response, next: NextFunction): Promise<void> {
   const validation = createStorySchema.safeParse(request.body);
@@ -60,6 +60,95 @@ export async function listStories(request: Request, response: Response, next: Ne
   }
 }
 
+export async function listOwnStories(request: Request, response: Response, next: NextFunction): Promise<void> {
+  try {
+    const stories = await StoryModel.find({
+      userId: request.user!.userId,
+      expiresAt: { $gt: new Date() },
+    }).select("+viewedBy").sort({ createdAt: -1 });
+
+    response.status(200).json({
+      success: true,
+      data: { stories: stories.map((story) => ({ ...story.toJSON(), viewerCount: story.viewedBy?.length ?? 0 })) },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function activeStory(storyId: string) {
+  return { _id: storyId, expiresAt: { $gt: new Date() } };
+}
+
+async function sendStoryMutationFailure(storyId: string, userId: string, response: Response): Promise<void> {
+  const story = await StoryModel.findOne(activeStory(storyId)).select("userId").lean();
+  if (story && story.userId !== userId) {
+    response.status(403).json({
+      success: false,
+      error: { code: "STORY_NOT_OWNER", message: "Only the story owner can make this change" },
+    });
+    return;
+  }
+  response.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Story not found" } });
+}
+
+export async function updateStory(request: Request, response: Response, next: NextFunction): Promise<void> {
+  const params = storyParamsSchema.safeParse(request.params);
+  const body = updateStorySchema.safeParse(request.body);
+  if (!params.success || !body.success) {
+    response.status(400).json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid story update",
+        details: !params.success ? params.error.flatten() : body.error?.flatten(),
+      },
+    });
+    return;
+  }
+
+  try {
+    const { storyId } = params.data;
+    const userId = request.user!.userId;
+    const story = await StoryModel.findOneAndUpdate(
+      { ...activeStory(storyId), userId },
+      { $set: { caption: body.data.caption } },
+      { new: true, runValidators: true },
+    );
+    if (!story) {
+      await sendStoryMutationFailure(storyId, userId, response);
+      return;
+    }
+    response.status(200).json({ success: true, data: { story: story.toJSON() } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteStory(request: Request, response: Response, next: NextFunction): Promise<void> {
+  const params = storyParamsSchema.safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "Invalid story ID", details: params.error.flatten() },
+    });
+    return;
+  }
+
+  try {
+    const { storyId } = params.data;
+    const userId = request.user!.userId;
+    const result = await StoryModel.deleteOne({ ...activeStory(storyId), userId });
+    if (!result.deletedCount) {
+      await sendStoryMutationFailure(storyId, userId, response);
+      return;
+    }
+    response.status(200).json({ success: true, data: { deleted: true } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function viewStory(request: Request, response: Response, next: NextFunction): Promise<void> {
   const validation = storyParamsSchema.safeParse(request.params);
 
@@ -85,6 +174,11 @@ export async function viewStory(request: Request, response: Response, next: Next
     );
 
     if (!story) {
+      // Owners can open their own stories without adding themselves to viewedBy.
+      if (await StoryModel.exists({ ...activeStory(validation.data.storyId), userId })) {
+        response.status(200).json({ success: true, data: { viewed: false } });
+        return;
+      }
       response.status(404).json({
         success: false,
         error: { code: "NOT_FOUND", message: "Story not found" },
